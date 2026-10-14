@@ -103,7 +103,7 @@ static cJSON *sh_section(struct app *a,const char *id){cJSON *s; cJSON_ArrayForE
 enum {SH_NETWORK_COLOR,SH_DEVICE_COLOR,SH_SERVICE_COLOR};
 static int sh_color_group(const char *section){
  if(!strncmp(section,"clash",5)||!strncmp(section,"tailscale",9)||!strcmp(section,"sms"))return SH_SERVICE_COLOR;
- const char*network[]={"wifi","cell","usb","router","band","signal","diagnostics"};
+ const char*network[]={"wifi","cell","usb","router","clients","network-control","band","signal","diagnostics"};
  for(size_t n=0;n<sizeof(network)/sizeof(network[0]);n++)if(!strcmp(section,network[n]))return SH_NETWORK_COLOR;
  return SH_DEVICE_COLOR;
 }
@@ -195,8 +195,41 @@ static void sh_units(double bytes,char*out,size_t n,int speed){
  const char*units[]={"B","KiB","MiB","GiB","TiB"};int u=0;while(bytes>=1024&&u<4){bytes/=1024;u++;}snprintf(out,n,bytes>=100?"%.0f %s%s":"%.1f %s%s",bytes,units[u],speed?"/s":"");
 }
 static void sh_metric(cJSON*data,const char*key,char*out,size_t n,int speed){cJSON*v=sh_get(data,key);if(cJSON_IsNumber(v)&&v->valuedouble>=0)sh_units(v->valuedouble,out,n,speed);else snprintf(out,n,"—");}
+static void sh_rate(cJSON*data,const char*key,char*value,size_t cap,char*unit,size_t unit_cap){
+ cJSON*v=sh_get(data,key);if(!cJSON_IsNumber(v)||!isfinite(v->valuedouble)||v->valuedouble<0){snprintf(value,cap,"—");unit[0]=0;return;}
+ const char*units[]={"B/s","KiB/s","MiB/s","GiB/s","TiB/s"};double rate=v->valuedouble;int u=0;
+ while(rate>=1024&&u<4){rate/=1024;u++;}snprintf(value,cap,rate>=100?"%.0f":"%.1f",rate);snprintf(unit,unit_cap,"%s",units[u]);
+}
+static const char *sh_usage_saved(cJSON*usage){
+ if(!cJSON_IsTrue(sh_get(usage,"available")))return cJSON_IsTrue(sh_get(usage,"stored_ledger_exists"))?"读数未知 · 存档保留":"读数未知";
+ if(cJSON_IsTrue(sh_get(usage,"persisted")))return "本次已保存";
+ return cJSON_IsTrue(sh_get(usage,"stored_ledger_exists"))?"已有存档 · 本次估算":"尚未保存";
+}
+static void sh_usage_note(cJSON*usage,char*out,size_t cap){
+ if(!cJSON_IsTrue(sh_get(usage,"available"))){snprintf(out,cap,cJSON_IsTrue(sh_get(usage,"stored_ledger_exists"))?"当前读数未知 · 已保存台账保留":"当前 SIM 或蜂窝计数不可用");return;}
+ int day=sh_num(usage,"reset_day",0),gap=cJSON_IsTrue(sh_get(usage,"sampling_gap"));
+ if(day>0)snprintf(out,cap,"月结每月 %d 日 · 首次记录前用量未知%s",day,gap?" · 采样有间隔":"");
+ else snprintf(out,cap,"首次记录前用量未知%s",gap?" · 采样有间隔":"");
+}
+/* Choices, reports and forms keep continuous scrolling. Main menus use four
+ * complete rows; their pixel offsets remain compatible with remembered state. */
+#define SH_PAGE_ITEMS 4
+#define SH_PAGE_OFFSET (SH_PAGE_ITEMS*63)
+static int sh_page_begin(struct app*a,int*offset,int count){
+ struct panel_shell*s=&a->shell;int pages=count>0?(count+SH_PAGE_ITEMS-1)/SH_PAGE_ITEMS:1;
+ if(*offset<0)*offset=0;int page=*offset/SH_PAGE_OFFSET;if(page>=pages)page=pages-1;*offset=page*SH_PAGE_OFFSET;
+ s->scroll_offset=offset;s->scroll_max=(pages-1)*SH_PAGE_OFFSET;s->scroll_top=80;s->scroll_bottom=368;
+ return page*SH_PAGE_ITEMS;
+}
+static void sh_page_footer(struct drm_buf*b,struct app*a,int count){
+ struct panel_shell*s=&a->shell;int pages=count>0?(count+SH_PAGE_ITEMS-1)/SH_PAGE_ITEMS:1,page=s->scroll_offset?*s->scroll_offset/SH_PAGE_OFFSET:0;char text[40];
+ if(pages<=1)return;
+ if(page>0)sh_button(b,a,12,377,92,46,"上一页",SH_PREV,0);
+ if(page+1<pages)sh_button(b,a,216,377,92,46,"下一页",SH_NEXT,0);
+ snprintf(text,sizeof(text),"%d / %d",page+1,pages);draw_text_center(b,108,212,392,text,16,SH_MUTED);
+}
 /* A viewport clips pixels AND hit targets. Absolute indices keep actions stable
- * when a row is partially visible; no paging controls or empty pager reserve. */
+ * when a choice, form field or report line is partially visible. */
 static void sh_scroll_begin(struct app*a,int*offset,int height,int top,int bottom){
  struct panel_shell*s=&a->shell;s->scroll_offset=offset;s->scroll_top=top;s->scroll_bottom=bottom;
  s->scroll_max=height-(bottom-top);if(s->scroll_max<0)s->scroll_max=0;
@@ -252,12 +285,20 @@ static void sh_choice_row(struct drm_buf*b,struct app*a,int y,cJSON*c,int id){
  if(enabled)hit_add(a,12,y,308,y+57,id);
 
 }
-static const char *sh_net_sections[]={"wifi","cell","usb","router","clients"};
-static const char *sh_net_titles[]={"Wi-Fi","蜂窝网络","USB 与网口","路由与安全","已连接设备"};
-static const char *sh_net_notes[]={"名称、密码与无线设置","选网、APN 与 SIM","接口模式与网络共享","局域网、DHCP 与 DNS","查看接入终端"};
-static const char *sh_settings_sections[]={"system","battery","usage","signal","sms","band","sim","diagnostics"};
-static const char *sh_settings_titles[]={"电源与屏幕","电池与省电","套餐流量账本","信号与邻区","短信收件箱","频段与小区","SIM 卡状态","网络诊断"};
-static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试"};
+static const char *sh_net_sections[]={"wifi","cell","usb","router","clients","network-control"};
+static const char *sh_net_titles[]={"Wi-Fi","蜂窝网络","USB 与网口","路由与安全","已连接设备","终端网络"};
+static const char *sh_net_notes[]={"名称、密码与无线设置","选网、APN 与 SIM","接口模式与网络共享","局域网、DHCP 与 DNS","查看接入终端","网页启停与按 MAC 管理"};
+/* Section array order IS the stable SH_SECTION identity. Append new pages at
+ * the end so existing ids never shift; the display order array below decides
+ * what the user actually sees first. */
+static const char *sh_settings_sections[]={"system","battery","usage","signal","sms","band","sim","diagnostics","esim","clients","auth-bypass"};
+static const char *sh_settings_titles[]={"电源与屏幕","电池与省电","套餐流量账本","信号与邻区","短信收件箱","频段与小区","SIM 卡状态","网络诊断","eSIM 配置文件","已连接设备","终端上网放行"};
+static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试","读取 eUICC 与切换套餐","放行未认证终端上网","查看并切换本机放行开关"};
+/* Display order is independent of the stable SH_SECTION action indices. */
+static int sh_menu_index(struct app*a,int index){
+ static const int settings_order[]={0,1,2,8,3,4,6,5,7,9,10,11};
+ return a->shell.tab==4&&index>=0&&index<12?settings_order[index]:index;
+}
 /* The asynchronous snapshot owns service state, while the clock is local.
  * Neither may fall back to fields from the retired synchronous UI. */
 static const char *sh_outlet(cJSON*d){
@@ -321,13 +362,18 @@ static void sh_statusbar(struct drm_buf*b,struct app*a,time_t now){
 
 }
 static void sh_home(struct drm_buf*b,struct app*a){
- struct panel_shell*s=&a->shell;cJSON*d=sh_get(s->snapshot,"data"),*cl=sh_get(d,"clash");char tmp[160],down[40],up[40],today[40],month[40],quota[40],used[40];
- if(!strcmp(sh_str(d,"physical_iface",""),"u60sta"))snprintf(tmp,sizeof(tmp),"%s",sh_str(d,"wifi_status","Wi-Fi 上游中继"));else snprintf(tmp,sizeof(tmp),"%s · %s",sh_str(d,"operator",a->operator[0]?a->operator:"运营商未知"),sh_str(d,"network",a->net_type[0]?a->net_type:"网络未知"));sh_text(b,16,51,tmp,15,SH_CYAN,287);
+ struct panel_shell*s=&a->shell;cJSON*d=sh_get(s->snapshot,"data"),*cl=sh_get(d,"clash");char tmp[160],down[40],up[40],down_unit[16],up_unit[16],today[40],quota[40],used[40];
+ if(!strcmp(sh_str(d,"physical_iface",""),"u60sta"))snprintf(tmp,sizeof(tmp),"%s",sh_str(d,"wifi_status","Wi-Fi 上游中继"));else snprintf(tmp,sizeof(tmp),"%s · %s",sh_str(d,"operator","运营商未知"),sh_str(d,"network","网络未知"));sh_text(b,16,51,tmp,15,SH_CYAN,287);
  snprintf(tmp,sizeof(tmp),"出口 · %s",sh_outlet(d));sh_text(b,16,74,tmp,14,SH_MUTED,287);
- sh_surface(b,12,96,308,167,13,sh_category_card(SH_NETWORK_COLOR));sh_metric(d,"download_bps",down,sizeof(down),1);sh_metric(d,"upload_bps",up,sizeof(up),1);
- sh_text(b,24,105,"↓ 下载",14,SH_MUTED,130);sh_text(b,170,105,"↑ 上传",14,SH_MUTED,126);sh_text(b,24,128,down,24,SH_TEXT,135);sh_text(b,170,128,up,24,SH_TEXT,126);
- sh_metric(d,"today_bytes",today,sizeof(today),0);sh_metric(d,"month_bytes",month,sizeof(month),0);sh_surface(b,12,174,308,230,11,sh_category_card(SH_DEVICE_COLOR));
- sh_text(b,24,184,"蜂窝流量",14,SH_MUTED,100);cJSON*usage=sh_get(d,"usage");const char*warning_state=sh_str(usage,"warning","");int warning=!strcmp(warning_state,"threshold")||!strcmp(warning_state,"exceeded");sh_text(b,170,184,warning?"套餐用量预警 ›":"套餐台账 ›",14,warning?SH_CYAN:SH_MUTED,126);snprintf(tmp,sizeof(tmp),"今日 %s",today);sh_text(b,24,206,tmp,17,SH_TEXT,138);snprintf(tmp,sizeof(tmp),"本月 %s",month);sh_text(b,170,206,tmp,17,SH_TEXT,126);hit_add(a,12,174,308,230,SH_SECTION+24);
+ sh_surface(b,12,96,308,167,13,sh_category_card(SH_NETWORK_COLOR));sh_rate(d,"download_bps",down,sizeof(down),down_unit,sizeof(down_unit));sh_rate(d,"upload_bps",up,sizeof(up),up_unit,sizeof(up_unit));
+ sh_text(b,24,105,"↓ 下载",14,SH_MUTED,165);sh_text(b,216,105,"↑ 上传",14,SH_MUTED,80);
+ sh_text(b,24,127,down,32,SH_TEXT,128);sh_text(b,152,140,down_unit,14,SH_MUTED,62);
+ sh_text(b,216,126,up,21,SH_TEXT,80);sh_text(b,216,149,up_unit,14,SH_MUTED,80);
+ sh_metric(d,"today_bytes",today,sizeof(today),0);sh_surface(b,12,174,308,230,11,sh_category_card(SH_DEVICE_COLOR));
+ cJSON*usage=sh_get(d,"usage");int usage_available=cJSON_IsTrue(sh_get(usage,"available"));const char*warning_state=sh_str(usage,"warning","");int warning=!strcmp(warning_state,"threshold")||!strcmp(warning_state,"exceeded");
+ sh_text(b,24,184,"蜂窝流量",14,SH_MUTED,100);sh_text(b,170,184,warning?"估算用量预警 ›":"历史此前未知 ›",14,warning?SH_CYAN:SH_MUTED,126);
+ snprintf(tmp,sizeof(tmp),"今日 %s",today);sh_text(b,24,206,tmp,17,SH_TEXT,138);
+ if(usage_available){char cycle[40];sh_metric(usage,"used_bytes",cycle,sizeof(cycle),0);snprintf(tmp,sizeof(tmp),"周期 %s",cycle);}else snprintf(tmp,sizeof(tmp),"周期 —");sh_text(b,170,206,tmp,17,SH_TEXT,126);hit_add(a,12,174,308,230,SH_SECTION+24);
  sh_surface(b,12,237,308,326,12,sh_category_card(SH_SERVICE_COLOR));snprintf(tmp,sizeof(tmp),"已选节点 · %s",mode_label(sh_str(cl,"mode","")));sh_text(b,24,247,tmp,16,sh_category_ink(SH_SERVICE_COLOR),181);
  char connections[24];sh_value(sh_get(cl,"connections"),connections,sizeof(connections));snprintf(tmp,sizeof(tmp),"%s 连接",connections);sh_text(b,220,248,tmp,15,SH_MUTED,78);
  sh_text(b,24,272,sh_str(cl,"node","尚未选择节点"),17,SH_TEXT,268);
@@ -336,7 +382,7 @@ static void sh_home(struct drm_buf*b,struct app*a){
  const char*labels[]={cJSON_IsTrue(sh_get(sh_get(d,"wifi_relay"),"enabled"))?"中继管理 / 停止":"Wi-Fi 热点","USB 与网口"};const char*keys[]={"wifi_status","usb_status"};
  for(int i=0;i<2;i++){int x=12+i*151;sh_surface(b,x,333,x+145,378,10,sh_category_card(SH_NETWORK_COLOR));sh_text(b,x+10,341,labels[i],14,SH_MUTED,125);sh_text(b,x+10,358,sh_str(d,keys[i],"状态未知"),15,SH_TEXT,125);hit_add(a,x,333,x+145,378,SH_SECTION+20+i);}
  char clients[24];sh_value(sh_get(d,"clients"),clients,sizeof(clients));
- sh_surface(b,12,383,308,430,9,sh_category_card(SH_DEVICE_COLOR));snprintf(tmp,sizeof(tmp),"已连接设备 · %s 台",clients);sh_text(b,24,399,tmp,16,SH_TEXT,250);sh_text(b,285,398,"›",20,SH_CYAN,16);hit_add(a,12,383,308,430,SH_SECTION+25);
+ sh_surface(b,12,383,308,430,9,sh_category_card(SH_DEVICE_COLOR));snprintf(tmp,sizeof(tmp),"已连接设备 · %s 台",clients);sh_text(b,24,390,tmp,16,SH_TEXT,250);sh_text(b,24,411,"Wi-Fi 与 USB 接入设备",14,SH_MUTED,250);sh_text(b,285,398,"›",20,SH_CYAN,16);hit_add(a,12,383,308,430,SH_SECTION+25);
 
 }
 static void sh_navigation(struct drm_buf*b,struct app*a){
@@ -350,24 +396,27 @@ static void sh_navigation(struct drm_buf*b,struct app*a){
   hit_add(a,x,433,x+64,480,SH_TAB+i);
  }
 }
-static int sh_menu_count(struct app*a){return a->shell.tab==1?5:(int)(sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0]))+1;}
+static int sh_menu_count(struct app*a){return a->shell.tab==1?(int)(sizeof(sh_net_sections)/sizeof(sh_net_sections[0])):(int)(sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0]))+1;}
 static void sh_section_list(struct drm_buf*b,struct app*a){
  int n=sh_menu_count(a);const char**names=a->shell.tab==1?sh_net_titles:sh_settings_titles;const char**notes=a->shell.tab==1?sh_net_notes:sh_settings_notes;
- sh_scroll_begin(a,&a->shell.menu_page,n*63+8,52,428);
- for(int i=0;i<n;i++){int y=56+i*63-a->shell.menu_page;if(y+57<=52||y>=428)continue;
+ int first=sh_page_begin(a,&a->shell.menu_page,n);
+ const char*group=a->shell.tab==1?(first?"接入设备":"网络与共享"):(first==0?"常用设置":first==4?"信号、消息与卡槽":"高级与恢复");sh_text(b,16,56,group,14,SH_MUTED,288);
+ for(int k=0;k<SH_PAGE_ITEMS&&first+k<n;k++){int i=sh_menu_index(a,first+k),y=80+k*72;
  if(a->shell.tab==4&&i==n-1)sh_row(b,a,y,"切换到原厂界面","备用管理入口",SH_FACTORY,1,SH_DEVICE_COLOR);
  else sh_row(b,a,y,names[i],notes[i],SH_SECTION+i,1,sh_color_group(a->shell.tab==1?sh_net_sections[i]:sh_settings_sections[i]));}
- sh_scroll_end(b,a);
+ sh_page_footer(b,a,n);
 }
 static void sh_detail(struct drm_buf*b,struct app*a){
  struct panel_shell*s=&a->shell;cJSON*sec=sh_section(a,s->section),*items=sh_get(sec,"items");int n=cJSON_GetArraySize(items);char val[256];
  if(!sec){sh_wrap(b,24,100,"正在读取设置，请稍候，页面会自动更新。",268,4,SH_MUTED);return;}
- sh_scroll_begin(a,&s->item_page,n*63+8,52,428);
- for(int i=0;i<n;i++){int y=56+i*63-s->item_page;if(y+57<=52||y>=428)continue;
+ int first=sh_page_begin(a,&s->item_page,n),row_top=80;
+ if(!strcmp(s->section,"usage")){cJSON*usage=sh_get(sh_get(s->snapshot,"data"),"usage");char label[180],note[160];snprintf(label,sizeof(label),"设备估算 · %s",sh_usage_saved(usage));sh_text(b,16,53,label,14,SH_MUTED,288);sh_usage_note(usage,note,sizeof(note));sh_text(b,16,72,note,14,SH_MUTED,288);row_top=92;}
+ else sh_text(b,16,56,"轻点设置 · 上下滑动翻页",14,SH_MUTED,288);
+ for(int k=0;k<SH_PAGE_ITEMS&&first+k<n;k++){int i=first+k,y=row_top+k*72;
  cJSON*it=cJSON_GetArrayItem(items,i);sh_value(sh_get(it,"value"),val,sizeof(val));
  if(!strcmp(sh_str(it,"type","info"),"action")&&!sh_get(it,"value"))snprintf(val,sizeof(val),"轻点执行");
  int interactive=sh_item_interactive(it);sh_row(b,a,y,sh_str(it,"label","设置"),val,interactive?SH_ITEM+i:0,interactive,sh_current_group(a));}
- sh_scroll_end(b,a);
+ sh_page_footer(b,a,n);
 }
 /* Filtering only indexes the immutable cloned draft; never edit choices/args. */
 static cJSON *sh_choices(struct panel_shell*s){return s->modal==5?sh_get(cJSON_GetArrayItem(sh_get(s->draft,"fields"),s->field),"choices"):sh_get(s->draft,"choices");}
@@ -462,18 +511,18 @@ static void shell_render(struct drm_buf*b,struct app*a){
  struct panel_shell*s=&a->shell;const char*titles[]={"U60 Pro","网络","代理","组网","设置"};
  s->scroll_offset=NULL;draw_clip_top=0;draw_clip_bottom=H;
  if(s->tab<0||s->tab>4)s->tab=0;sh_background(b,0,0,320,480);hit_reset(a);
+ if(!s->subpage&&(s->tab==2||s->tab==3))sh_open_section(a,s->tab==2?"clash":"tailscale");
  const char*title=s->subpage?sh_str(sh_section(a,s->section),"title",s->section):titles[s->tab];
- int child=sh_str(sh_section(a,s->section),"parent","")[0]!=0;
- int back=s->subpage&&(child||(s->tab!=2&&s->tab!=3));
- sh_text(b,16,13,back?"‹":"",21,SH_CYAN,20);sh_text(b,back?38:16,14,title,19,SH_TEXT,back?100:122);if(back)hit_add(a,0,0,140,44,SH_BACK);
+ int back=s->subpage;
+ sh_text(b,16,13,back?"‹":"",21,SH_CYAN,20);sh_text(b,back?48:16,14,title,19,SH_TEXT,back?90:122);if(back)hit_add(a,0,0,44,44,SH_BACK);
  sh_statusbar(b,a,time(NULL));
- if(s->tab==0)sh_home(b,a);else if(s->subpage)sh_detail(b,a);else if(s->tab==1||s->tab==4)sh_section_list(b,a);else {sh_open_section(a,s->tab==2?"clash":"tailscale");sh_detail(b,a);}
+ if(s->tab==0)sh_home(b,a);else if(s->subpage)sh_detail(b,a);else if(s->tab==1||s->tab==4)sh_section_list(b,a);
  sh_navigation(b,a);
- if(s->busy){fill_rect(b,0,0,140,44,SH_RAISED);sh_text(b,12,14,"正在处理…",16,SH_CYAN,122);sh_surface(b,12,325,308,420,12,SH_RAISED);sh_wrap(b,24,340,s->status,272,3,SH_TEXT);}
+ if(s->busy){fill_rect(b,back?44:0,0,140,44,SH_RAISED);sh_text(b,back?48:12,14,"正在处理…",16,SH_CYAN,back?90:122);sh_surface(b,12,325,308,420,12,SH_RAISED);sh_wrap(b,24,340,s->status,272,3,SH_TEXT);}
  else if(s->status[0]&&now_ms()<s->status_until){
-  /* The title area doubles as a dismissible operation receipt, without blocking navigation. */
-  fill_rect(b,0,0,140,44,SH_RAISED);sh_text(b,12,5,"结果 · 轻点查看",14,SH_CYAN,122);sh_text(b,12,24,s->status,14,SH_TEXT,122);
-  int receipt_hit=0;for(int h=0;h<a->nhits;h++)if(a->hits[h].id==SH_BACK){a->hits[h].id=SH_STATUS;receipt_hit=1;}if(!receipt_hit)hit_add(a,0,0,140,44,SH_STATUS);
+  /* Results use the title slot; the fixed back target remains available. */
+  int left=back?44:0;fill_rect(b,left,0,140,44,SH_RAISED);sh_text(b,left+4,5,"查看结果",14,SH_CYAN,136-left);sh_text(b,left+4,24,s->status,14,SH_TEXT,136-left);
+  hit_add(a,left,0,140,44,SH_STATUS);
  }
  if(s->modal||s->editor)sh_modal(b,a);
  if(s->power_open){s->scroll_offset=NULL;hit_reset(a);sh_background(b,0,0,320,480);sh_text(b,24,70,"电源",25,SH_TEXT,272);sh_text(b,24,110,"选择设备操作",14,SH_MUTED,272);sh_button(b,a,24,169,272,58,"关闭设备",SH_POWER_OFF,0);sh_button(b,a,24,243,272,58,"重新启动",SH_POWER_REBOOT,0);sh_button(b,a,24,337,272,54,"取消",SH_CANCEL,1);}
@@ -522,10 +571,11 @@ static int shell_hit(struct app*a,int id){
   if(s->modal==1){int n=sh_choice_count(s);if(id>=SH_CHOICE&&id<SH_CHOICE+n){cJSON*c=sh_choice_at(s,id-SH_CHOICE);if(c){if(cJSON_IsFalse(sh_get(c,"enabled")))return 1;else{cJSON*base=sh_get(s->draft,"args");cJSON*args=base?cJSON_Duplicate(base,1):cJSON_CreateObject();cJSON*v;cJSON_ArrayForEach(v,sh_get(c,"args")){if(v->string){cJSON_DeleteItemFromObjectCaseSensitive(args,v->string);cJSON_AddItemToObject(args,v->string,cJSON_Duplicate(v,1));}}const char*override=sh_str(c,"action","");if(*override){cJSON_DeleteItemFromObject(s->draft,"action");cJSON_AddStringToObject(s->draft,"action",override);}snprintf(s->message,sizeof(s->message),"%s",sh_str(c,"label","所选设置"));sh_prepare(a,args);cJSON_Delete(args);}}}return 1;}return 1;
  }
  if(id>=SH_TAB&&id<SH_TAB+5){s->menu_offsets[s->tab]=s->menu_page;s->tab=id-SH_TAB;s->menu_page=s->menu_offsets[s->tab];s->subpage=0;s->section[0]=0;s->item_page=0;return 1;}
+ if((id==SH_PREV||id==SH_NEXT)&&s->scroll_offset){int offset=*s->scroll_offset+(id==SH_NEXT?SH_PAGE_OFFSET:-SH_PAGE_OFFSET);if(offset<0)offset=0;if(offset>s->scroll_max)offset=s->scroll_max;*s->scroll_offset=offset;return 1;}
  if(id==SH_REFRESH){shell_request_refresh(a);return 1;}
  if(id==SH_FACTORY){shell_factory(a);return 1;}
  if(id==SH_BACK){const char*parent=sh_str(sh_section(a,s->section),"parent","");if(*parent){sh_open_section(a,parent);return 1;}if(s->subpage){s->subpage=0;s->item_page=0;if(s->tab==2||s->tab==3)s->tab=0;}else s->tab=0;return 1;}
- if(id>=SH_SECTION&&id<SH_SECTION+30){i=id-SH_SECTION;if(s->tab==0){if(i==1){s->tab=1;sh_open_section(a,"cell");}else if(i==20||i==21){s->tab=1;sh_open_section(a,i==20?"wifi":"usb");}else if(i==22){s->tab=2;sh_open_section(a,"clash");}else if(i==23){s->tab=3;sh_open_section(a,"tailscale");}else if(i==24){s->tab=4;sh_open_section(a,"usage");}else if(i==25){s->tab=1;sh_open_section(a,"clients");}}else if(s->tab==1&&i<5)sh_open_section(a,sh_net_sections[i]);else if(s->tab==4&&i<(int)(sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0])))sh_open_section(a,sh_settings_sections[i]);return 1;}
+ if(id>=SH_SECTION&&id<SH_SECTION+30){i=id-SH_SECTION;if(s->tab==0){if(i==1){s->tab=1;sh_open_section(a,"cell");}else if(i==20||i==21){s->tab=1;sh_open_section(a,i==20?"wifi":"usb");}else if(i==22){s->tab=2;sh_open_section(a,"clash");}else if(i==23){s->tab=3;sh_open_section(a,"tailscale");}else if(i==24){s->tab=4;sh_open_section(a,"usage");}else if(i==25){s->tab=1;sh_open_section(a,"clients");}}else if(s->tab==1&&i<(int)(sizeof(sh_net_sections)/sizeof(sh_net_sections[0])))sh_open_section(a,sh_net_sections[i]);else if(s->tab==4&&i<(int)(sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0])))sh_open_section(a,sh_settings_sections[i]);return 1;}
  if(!s->subpage&&(s->tab==1||s->tab==4))return 1;
  cJSON*items=sh_get(sh_section(a,s->section),"items");int n=cJSON_GetArraySize(items);
  if(id>=SH_ITEM&&id<SH_ITEM+n){cJSON*it=cJSON_GetArrayItem(items,id-SH_ITEM);if(it)sh_open_item(a,it);}
@@ -539,7 +589,11 @@ static int shell_pointer(struct app*a,int x,int y,int down,int released){
  if(!s->drag_active)return 0;
  if(abs(y-s->drag_y)>8||abs(x-s->drag_x)>8)s->drag_moved=1;
  int changed=0;
- if(s->drag_moved&&s->drag_scroll&&s->scroll_offset){int old=*s->scroll_offset;*s->scroll_offset+=s->drag_last_y-y;if(*s->scroll_offset<0)*s->scroll_offset=0;if(*s->scroll_offset>s->scroll_max)*s->scroll_offset=s->scroll_max;changed=old!=*s->scroll_offset;}
+ if(s->drag_moved&&s->drag_scroll&&s->scroll_offset){
+  int paged=!s->modal&&!s->editor;
+  if(!paged){int old=*s->scroll_offset;*s->scroll_offset+=s->drag_last_y-y;if(*s->scroll_offset<0)*s->scroll_offset=0;if(*s->scroll_offset>s->scroll_max)*s->scroll_offset=s->scroll_max;changed=old!=*s->scroll_offset;}
+  else if((released||!down)&&abs(y-s->drag_y)>=32&&abs(y-s->drag_y)>abs(x-s->drag_x)){int old=*s->scroll_offset;shell_hit(a,y<s->drag_y?SH_NEXT:SH_PREV);changed=old!=*s->scroll_offset;}
+ }
  s->drag_last_y=y;
  if(released||!down){if(!s->drag_moved&&s->drag_hit>=0&&s->drag_hit==hit_find(a,x,y)){shell_hit(a,s->drag_hit);changed=1;}s->drag_active=0;}
  return changed;

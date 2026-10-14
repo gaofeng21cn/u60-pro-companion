@@ -24,7 +24,7 @@ if [ "$ACTION" = --start ];then
  [ "$(cat /data/u60-panel/portable-release 2>/dev/null)" = "$ID" ] || fail 'Install this release first'
  (cd payload && find data -type f | while IFS= read -r p;do
    # Settings may be edited after installation; verify program/immutable files only.
-   case "$p" in *.sh|*/u60-panel|*/panel-control|*/panel-ubus|*/panel-wifi-crypto|*/panel-relay|*/panel-standby|*/panel-web|*/panel-web-control|*/mihomo|*/tailscale|*/tailscaled)
+   case "$p" in *.sh|*/u60-panel|*/panel-control|*/panel-ubus|*/panel-wifi-crypto|*/panel-relay|*/panel-standby|*/panel-web|*/panel-web-control|*/u60-esim|*/lpac|*/mihomo|*/tailscale|*/tailscaled)
     [ "$(sha256sum "$PKG/payload/$p" | cut -d ' ' -f 1)" = "$(sha256sum "/$p" | cut -d ' ' -f 1)" ] || exit 1;;
    esac
   done) || fail 'Installed program differs from this release'
@@ -34,7 +34,7 @@ if [ "$ACTION" = --start ];then
  exit 0
 fi
 for name in u60-panel u60-clash tailscale u60-web;do [ ! -e "/data/$name" ] && [ ! -L "/data/$name" ] || fail 'Existing project files found; use the update workflow';done
-for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-ncm-trial u60-ecm-trial;do
+for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-auth-bypass u60-ncm-trial u60-ecm-trial;do
  [ ! -e "/etc/init.d/$name" ] && [ ! -L "/etc/init.d/$name" ] || fail 'Existing project init service found'
  for p in /etc/rc.d/*"$name";do [ ! -e "$p" ] && [ ! -L "$p" ] || fail 'Existing project boot link found';done
 done
@@ -58,7 +58,7 @@ recover() {
  if [ "$result" -ne 0 ];then
   if [ "$CHANGED" = 1 ];then
    cp -p "$BACKUP/rc.local" /etc/rc.local
-   for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-ncm-trial u60-ecm-trial;do
+   for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-auth-bypass u60-ncm-trial u60-ecm-trial;do
     if [ -x "/etc/init.d/$name" ];then "/etc/init.d/$name" disable >/dev/null 2>&1 || true;fi
     rm -f "/etc/init.d/$name" "/etc/init.d/$name.portable-next"
    done
@@ -90,7 +90,7 @@ for name in u60-panel u60-clash tailscale u60-web;do
  printf '%s\n' "$name" >> "$BACKUP/created-dirs"
  mv "$STAGE/$name" "/data/$name"
 done
-for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-ncm-trial u60-ecm-trial;do
+for name in u60-usb-isolate u60-usb-role u60-wifi-relay u60-standby u60-web u60-auth-bypass u60-ncm-trial u60-ecm-trial;do
  cp "payload/init/$name" "/etc/init.d/$name.portable-next"
  chmod 700 "/etc/init.d/$name.portable-next"
  mv "/etc/init.d/$name.portable-next" "/etc/init.d/$name"
@@ -101,6 +101,9 @@ if [ ! -e /data/u60-panel/compat-mode ];then
  /etc/init.d/u60-usb-role enable
 fi
 /etc/init.d/u60-web enable
+# Terminal-auth bypass is an explicitly opt-in module. Installing its guarded
+# init script does not alter the stock boot path; the UI enables it only after
+# the user chooses the separate local switch.
 chmod 755 "$STAGE/rc.local"
 mv "$STAGE/rc.local" /etc/rc.local
 printf 'installed\n' > "$BACKUP/status"

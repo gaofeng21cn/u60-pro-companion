@@ -10,7 +10,7 @@ import time
 import unittest
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-SERVICES=['u60-usb-isolate','u60-usb-role','u60-wifi-relay','u60-standby','u60-web','u60-ncm-trial','u60-ecm-trial']
+SERVICES=['u60-usb-isolate','u60-usb-role','u60-wifi-relay','u60-standby','u60-web','u60-auth-bypass','u60-ncm-trial','u60-ecm-trial']
 class PortableInstall(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='u60-portable-');self.root=pathlib.Path(self.tmp.name)

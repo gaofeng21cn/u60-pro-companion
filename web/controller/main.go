@@ -1441,6 +1441,10 @@ func (a *App) tailscaleSet(action string, args M) M {
 }
 func (a *App) dispatch(r Request) M {
 	switch r.Action {
+	case "web.network.state":
+		return a.networkState()
+	case "web.network.save":
+		return a.saveNetwork(r.Args)
 	case "web.clash.state":
 		return a.clashState()
 	case "web.clash.diagnose":
@@ -1519,7 +1523,7 @@ func main() {
 		if dec.Decode(&extra) != io.EOF {
 			return fail("请求格式无效")
 		}
-		read := r.Action == "web.clash.state" || r.Action == "web.clash.diagnose" || r.Action == "web.tailscale.state" || r.Action == "web.tailscale.netcheck"
+		read := r.Action == "web.clash.state" || r.Action == "web.clash.diagnose" || r.Action == "web.tailscale.state" || r.Action == "web.tailscale.netcheck" || r.Action == "web.network.state"
 		if !read {
 			f, e := os.OpenFile("/tmp/u60-control.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 			if e != nil {

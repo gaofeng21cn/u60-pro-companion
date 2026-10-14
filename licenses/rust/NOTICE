@@ -1,0 +1,20 @@
+Rust dependencies pinned by esim-agent/Cargo.lock.
+Original license and copyright texts are retained verbatim.
+Build-only macro dependencies are included for source builds as well.
+
+itoa 1.0.18 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa
+libc 0.2.190 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc
+memchr 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr
+proc-macro2 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2
+quote 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote
+serde 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde
+serde_core 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde
+serde_derive 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde
+serde_json 1.0.154 | MIT OR Apache-2.0 | https://github.com/serde-rs/json
+syn 3.0.8 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn
+unicode-ident 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident
+zmij 1.0.23 | MIT | https://github.com/dtolnay/zmij
+
+The local candidate uses Rust 1.95.0 standard-library runtime.
+Rust upstream: https://github.com/rust-lang/rust
+Standard-library notices are copied from the installed compiler distribution.

@@ -104,7 +104,7 @@ static int handle(struct ubus_context *ctx,struct ubus_object *obj,struct ubus_r
    out=answer(1,NULL);cJSON_AddStringToObject(out,"id",job.id);
   }
   else if((*job.id&&!job.done)||(job.done&&!job.delivered&&now_ms()-job.finished<120000))out=answer(0,"Another web operation is in progress");
-  else if(!launch(input,session,!strcmp(str(command,"action"),"state"),!strncmp(str(command,"action"),"web.",4)))out=answer(0,"Unable to start controller");
+  else if(!launch(input,session,!strcmp(str(command,"action"),"state")||!strcmp(str(command,"action"),"auth.bypass.state"),!strncmp(str(command,"action"),"web.",4)))out=answer(0,"Unable to start controller");
   else {out=answer(1,NULL);cJSON_AddStringToObject(out,"id",job.id);}
   cJSON_Delete(command);
  }else {

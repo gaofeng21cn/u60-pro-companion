@@ -88,7 +88,7 @@ class PortableUpgrade(unittest.TestCase):
             self.put(payload / 'init' / name, '#!/bin/sh\ncase "$1" in start) exit 0;; restart) exit 0;;esac\n')
         # These files did not exist before the NCM candidate release. Their
         # absence is part of the rollback target, not an incomplete backup.
-        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh']:
+        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh', 'u60-esim', 'lpac', 'esim-control.sh']:
             self.put(payload / 'data/u60-panel' / name, '#!/bin/sh\nexit 1\n')
         self.put(payload / 'init/u60-ncm-trial', '#!/bin/sh\nexit 1\n')
         # Installed device: same programs, plus the state and the first-install backup.
@@ -125,6 +125,8 @@ class PortableUpgrade(unittest.TestCase):
             if name == 'jsonfilter':
                 code = ('#!/bin/sh\ncat >/dev/null\ncase "$*" in *@.imei*) echo "${FAKE_IMEI:-123456789012345}";; '
                         '*) echo "${FAKE_FW:-BD_CNMU5250V1.0.0B31}";; esac\n')
+            if name == 'flock':
+                code = '#!/bin/sh\n[ "${FAKE_ESIM_LOCK:-0}" != 1 ] || [ "$*" != "-n 8" ]\n'
             self.put(self.tools / name, code)
         self.tools.joinpath('sha256sum').write_text('''#!/usr/bin/env python3
 import hashlib,pathlib,sys
@@ -240,6 +242,14 @@ else:
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('Turn off Mac USB networking', r.stderr)
 
+    def test_refuses_upgrade_while_esim_is_active_before_backup(self):
+        r = self.run_upgrade(env=dict(self.env, FAKE_ESIM_LOCK='1'))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('An eSIM operation is active', r.stderr)
+        self.assertFalse((self.target / 'data/u60-upgrade-backups').exists())
+        for rel, body in self.programs.items():
+            self.assertEqual((self.target / rel).read_text(), body)
+
     def test_refuses_a_package_that_adds_an_unexpected_file(self):
         self.put(self.pkg / 'payload/data/u60-panel/panel-new-daemon', '#!/bin/sh\nexit 0\n')
         self.hash_package()
@@ -301,7 +311,7 @@ else:
         self.assertEqual((backup / 'data/u60-panel/u60-panel').read_text(),
                          self.programs['data/u60-panel/u60-panel'])
         manifest = (backup / 'BACKUP-SHA256SUMS').read_text()
-        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh']:
+        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh', 'u60-esim', 'lpac', 'esim-control.sh']:
             self.assertTrue((self.target / 'data/u60-panel' / name).is_file())
             self.assertIn('  data-missing/u60-panel/' + name + '\n', manifest)
         self.assertIn('  init-missing/u60-ncm-trial\n', manifest)
@@ -336,7 +346,7 @@ else:
         self.assertIn('restoring the previous programs', r.stderr)
         self.assertIn('Previous programs restored', r.stderr)
         self.assertNotIn('Automatic rollback did not complete', r.stderr)
-        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh']:
+        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh', 'u60-esim', 'lpac', 'esim-control.sh']:
             self.assertFalse((self.target / 'data/u60-panel' / name).exists())
         self.assertFalse((self.target / 'etc/init.d/u60-ncm-trial').exists())
         self.assertEqual((self.target / 'data/u60-panel/u60-panel').read_text(),

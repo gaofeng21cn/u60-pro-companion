@@ -8,8 +8,10 @@ static int web_session_valid(const char *s) {
  return nonzero;
 }
 static int web_action_allowed(const char *s) {
- static const char *const names[]={"state",
+ static const char *const names[]={"state","esim.state","esim.imei","esim.scan","esim.enable","esim.disable","esim.nickname","esim.download","esim.notifications","esim.delete",
  "web.clash.state","web.clash.diagnose","web.clash.subscription_save","web.clash.subscription_delete","web.clash.connection_close","web.clash.favorite","web.clash.mode","web.clash.autoselect","web.tailscale.state","web.tailscale.hostname","web.tailscale.routes","web.tailscale.netcheck",
+ "web.network.state","web.network.save",
+"auth.bypass.state","auth.bypass.enable","auth.bypass.disable",
  "wifi.ap","wifi.channel","wifi.password","wifi.power","wifi.relay.connect","wifi.relay.off","wifi.relay.on","wifi.relay.scan","wifi.relay.select","wifi.relay.policy","wifi.relay.forget","wifi.relay.profiles","wifi.relay.profile","wifi.relay.manage","wifi.show_password","wifi.sleep","wifi.ssid",
  "tailscale.accept_dns","tailscale.accept_routes","tailscale.advertise_lan","tailscale.allow_lan","tailscale.connected","tailscale.exit","tailscale.lan_gateway","tailscale.offer_exit","tailscale.peer_test","network.tailscale_mode",
  "usb.power_role","usb.role","usb.macnet.mode","clash.about","clash.close_connections","clash.delay","clash.diagnose","clash.favorite","clash.flush_dns","clash.global_target","clash.history","clash.mode","clash.provider","clash.rule_add","clash.rule_edit","clash.rule_provider","clash.select","clash.service",

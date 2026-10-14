@@ -66,6 +66,15 @@ is_state() {
 if grep -F ' /sbin/usb/compositions/usb_switch ' /proc/mounts >/dev/null || [ "$(cat /data/u60-panel/usb-macnet-enabled 2>/dev/null || true)" = 1 ];then
  fail 'Turn off Mac USB networking through its UI before upgrading'
 fi
+# Refuse to replace an eSIM worker or lpac while it may be writing the card.
+# Also guard the first job after boot, before the coordinator made its directory.
+if [ "$ACTION" = upgrade ] || [ -d /tmp/u60-esim ];then
+ [ ! -L /tmp/u60-esim ] || fail 'Invalid eSIM state directory'
+ mkdir -p /tmp/u60-esim
+ chmod 700 /tmp/u60-esim
+ exec 8>/tmp/u60-esim/job.lock
+ flock -n 8 || fail 'An eSIM operation is active; wait for its final readback before upgrading'
+fi
 BACKUP="/data/u60-upgrade-backups/$ID"
 [ ! -e "$BACKUP" ] || fail 'Upgrade backup already exists; inspect it before retrying'
 STAGE="/data/u60-packages/upgrade-$ID"
@@ -78,13 +87,13 @@ NCM_SOURCE="payload/data/u60-panel/usb-ncm-composition.sh"
 PLAN=$(cd payload/data && find . -type f | sed 's|^\./||' | sort | while IFS= read -r rel; do
  is_state "$rel" && continue
  if [ ! -e "/data/$rel" ]; then
-  [ "$rel" = u60-panel/usb-ncm-composition.sh ] || [ "$rel" = u60-panel/usb-ncm-trial.sh ] || [ "$rel" = u60-panel/usb-ecm-trial.sh ] || [ "$rel" = u60-panel/usb-macnet-owner.sh ] || [ "$rel" = u60-panel/usb-macnet-hook.sh ] || fail "Unexpected new file in package: $rel"
+  [ "$rel" = u60-panel/u60-esim ] || [ "$rel" = u60-panel/lpac ] || [ "$rel" = u60-panel/esim-control.sh ] || [ "$rel" = u60-web/public/js/u60-web-esim.js ] || [ "$rel" = u60-web/public/js/jsQR.js ] || [ "$rel" = u60-web/public/js/jsQR-LICENSE.txt ] || [ "$rel" = u60-panel/usb-ncm-composition.sh ] || [ "$rel" = u60-panel/usb-ncm-trial.sh ] || [ "$rel" = u60-panel/usb-ecm-trial.sh ] || [ "$rel" = u60-panel/usb-macnet-owner.sh ] || [ "$rel" = u60-panel/usb-macnet-hook.sh ] || [ "$rel" = u60-panel/auth-bypass.sh ] || fail "Unexpected new file in package: $rel"
  fi
  printf '%s\n' "$rel"
 done)
 INIT_PLAN=$(cd payload/init && find . -type f | sed 's|^\./||' | sort | while IFS= read -r rel; do
  if [ ! -e "/etc/init.d/$rel" ]; then
-  [ "$rel" = u60-ncm-trial ] || [ "$rel" = u60-ecm-trial ] || fail "Unexpected new init service in package: $rel"
+  [ "$rel" = u60-ncm-trial ] || [ "$rel" = u60-ecm-trial ] || [ "$rel" = u60-auth-bypass ] || fail "Unexpected new init service in package: $rel"
  fi
  printf '%s\n' "$rel"
 done)

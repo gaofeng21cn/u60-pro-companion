@@ -9,6 +9,7 @@
 - [日常使用](USAGE.md)：小屏、网页、代理、组网和网络功能的操作方式。
 - [Mac USB 直连](MACOS-RNDIS.md)：B31 原生 ECM＋ADB 的使用、恢复和兼容边界。
 - [Wi-Fi 接力](WIFI-RELAY.md)：2.4GHz／非 DFS 5GHz 上游、保存网络、回退和停止方式。
+- [eSIM 候选能力](ESIM.md)：eSTK.me 等可插拔 eUICC 的读卡、下载、切换与实机验收边界。
 - [网络诊断](NETWORK-DIAGNOSTICS.md)：路由、DNS、HTTPS、代理和出口结果的含义。
 - [恢复与清理](RECOVERY.md)：切回原厂、启动项回退、升级备份和空间维护。
 

@@ -93,6 +93,11 @@ static int stringeq(const cJSON *a,const char *k,const char *s){return cJSON_IsS
 static cJSON *profile_run(const char *profile){if(fixture){if(!strcmp(profile,"status")){cJSON *r=cJSON_CreateObject();cJSON_AddStringToObject(r,"profile",*jstr(fixture,"profile")?jstr(fixture,"profile"):"direct");return r;}fixture_write_count++;if(cJSON_IsTrue(jget(fixture,"profile_failure")))return reply(0,"fixture profile failure");cJSON_DeleteItemFromObject(fixture,"profile");cJSON_AddStringToObject(fixture,"profile",profile);return reply(1,"fixture profile success");}char out[4096];char *av[]={"network-profile.sh",(char*)profile,NULL};int ok=run_cmd("/data/u60-panel/network-profile.sh",av,NULL,out,sizeof(out));cJSON *r=cJSON_Parse(out);if(cJSON_IsObject(r)&&cJSON_IsBool(jget(r,"ok"))&&(!cJSON_IsTrue(jget(r,"ok"))||ok)){if(!*jstr(r,"message"))cJSON_AddStringToObject(r,"message",cJSON_IsTrue(jget(r,"ok"))?"出口状态已回读":cJSON_IsTrue(jget(r,"fail_closed"))?"出口回退失败，已阻断公网转发；本地管理仍可用":*jstr(r,"kept")?"切换失败，已恢复原出口":"出口操作失败，未确认生效，请检查网络");return r;}cJSON_Delete(r);return reply(0,"上网出口脚本执行失败；请检查当前出口状态");}
 static cJSON *network_profile(const cJSON *args){const char *p=jstr(args,"profile");if(strcmp(p,"clash")&&strcmp(p,"direct")&&strcmp(p,"tailscale"))return reply(0,"无效上网出口");if(!strcmp(p,"tailscale")&&!tun_ready())return reply(0,"需要先完成 TUN 迁移并选择可用出口节点");cJSON *r=profile_run(p);int ok=cJSON_IsTrue(jget(r,"ok"));if(!ok)return r;cJSON_Delete(r);if(ok){r=profile_run("status");ok=stringeq(r,"profile",p);cJSON_Delete(r);}return reply(ok,ok?"上网出口已切换并回读确认":"出口切换未通过验收；请检查当前配置和回退状态");}
 
+#include "panel-esim-control.h"
+#include "panel-auth-control.h"
+#include "panel-network-control.h"
+#include "panel-auth-bypass.h"
+
 static cJSON *ts_mode_run(const char *mode){
  if(fixture){cJSON*r=reply(1,"模式已回读");int tun=cJSON_IsTrue(jget(fixture,"tun_ready"));if(strcmp(mode,"status")){fixture_write_count++;if(cJSON_IsTrue(jget(fixture,"mode_failure"))){cJSON_Delete(r);r=reply(0,"模式迁移失败，已恢复原模式");cJSON_AddBoolToObject(r,"rolled_back",1);return r;}tun=!strcmp(mode,"tun");cJSON_ReplaceItemInObject(fixture,"tun_ready",cJSON_CreateBool(tun));}cJSON_AddStringToObject(r,"mode",tun?"tun":"userspace");return r;}
  char out[4096];char*av[]={"tailscale-mode.sh",(char*)mode,NULL};int ok=run_cmd("/data/u60-panel/tailscale-mode.sh",av,NULL,out,sizeof(out));cJSON*r=cJSON_Parse(out);
@@ -400,16 +405,23 @@ static cJSON *state(void){
  if(!fixture)control_clash_sections(root);
 #endif
  if(!fixture){diagnostics_sections(root);ledger_sections(root);power_role_sections(root);charge_sections(root);standby_sections(root);radio_tools_sections(root);}
+ auth_sections(root);
+ auth_bypass_sections(root);
+ if(!fixture)network_control_sections(root);
+ esim_sections(root);
  return root;
 }
 static cJSON *dispatch(const cJSON *r){const char *a=jstr(r,"action");cJSON *args=jget(r,"args");if(!strcmp(a,"state"))return state();if(!cJSON_IsObject(args))return reply(0,"args 必须是对象");if(!strcmp(a,"system.power")){int reboot=0;if(!boolarg(args,"reboot",&reboot))return reply(0,"reboot 必须是布尔值");if(fixture){fixture_write_count++;return reply(1,"测试：已请求电源操作");}cJSON *p=cJSON_CreateObject();cJSON_AddStringToObject(p,"moduleName","web");cJSON *res=ubus_call("zwrt_mc.device.manager",reboot?"device_reboot":"device_poweroff",p);cJSON_Delete(p);if(!firmware_success(res)){cJSON_Delete(res);return reply(0,"电源操作未获原厂接口确认");}cJSON_Delete(res);return reply(1,reboot?"已请求重启":"已请求关机");}if(!strncmp(a,"wifi.",5))return wifi_action(a,args);if(!strcmp(a,"tailscale.exit"))return ts_exit_transaction(args);if(!strncmp(a,"tailscale.",10))return ts_action(a,args);if(!strcmp(a,"network.profile"))return network_profile(args);if(!strcmp(a,"network.tailscale_mode"))return ts_mode_action(args);
 #ifdef HAVE_ADVANCED_CONTROL
  if(!fixture){
+  cJSON *network=network_control_action(a,args);if(network)return network;
+  cJSON *ab=auth_bypass_action(a,args);if(ab)return ab;
   cJSON*standby=standby_action(a,args);if(standby)return standby;
   if(!strcmp(a,"maintenance.tick")){cJSON*r=reply(1,"后台采样完成");cJSON*l=ledger_tick(),*c=charge_tick();int ok=cJSON_IsTrue(jget(l,"ok"))&&cJSON_IsTrue(jget(c,"ok"));cJSON_ReplaceItemInObject(r,"ok",cJSON_CreateBool(ok));cJSON_AddItemToObject(r,"usage",l);cJSON_AddItemToObject(r,"charge",c);return r;}
   if(!strcmp(a,"usb.power_role")){cJSON*n=usb_macnet_owner("status");int blocked=cJSON_IsTrue(jget(n,"enabled"))||!strcmp(jstr(n,"phase"),"switching")||!strcmp(jstr(n,"phase"),"restoring")||!strcmp(jstr(n,"phase"),"queued");cJSON_Delete(n);if(blocked)return reply(0,"请先关闭 Mac USB 联网，再切换供电方向");}
   cJSON *d=diagnostics_action(a,args);if(d)return d;d=ledger_action(a,args);if(d)return d;d=charge_action(a,args);if(d)return d;d=power_role_action(a,args);if(d)return d;d=radio_tools_action(a,args);if(d)return d;
  }
+ if(!strncmp(a,"esim.",5)){cJSON*e=esim_action(a,args);if(e)return e;}
  if(!fixture){cJSON *advanced=control_advanced_action(a,args);if(advanced)return advanced;}
 #endif
 
@@ -424,7 +436,7 @@ int main(int argc,char **argv){signal(SIGPIPE,SIG_IGN);
  char input[16385];size_t n=fread(input,1,sizeof(input)-1,stdin);input[n]=0;const char *end=NULL;cJSON *request=NULL,*result=NULL;
  if(n<sizeof(input)-1)request=cJSON_ParseWithOpts(input,&end,1);
  if(!cJSON_IsObject(request))result=reply(0,"无效 JSON 请求或请求超过 16 KiB");else {
- int lock=-1,locked=0;int mutation=strcmp(jstr(request,"action"),"state")&&strcmp(jstr(request,"action"),"wifi.show_password")&&strcmp(jstr(request,"action"),"tailscale.peer_test");
+ int lock=-1,locked=0;int mutation=strcmp(jstr(request,"action"),"state")&&strcmp(jstr(request,"action"),"wifi.show_password")&&strcmp(jstr(request,"action"),"tailscale.peer_test")&&strcmp(jstr(request,"action"),"esim.state");
  if(mutation&&!fixture){lock=open("/tmp/u60-control.lock",O_CREAT|O_RDWR|O_CLOEXEC|O_NOFOLLOW,0600);long long until=ms()+3000;if(lock>=0){while(ms()<until){if(!flock(lock,LOCK_EX|LOCK_NB)){locked=1;break;}struct timespec t={0,50000000};nanosleep(&t,NULL);}}}
  if(mutation&&!fixture&&!locked)result=reply(0,"另一个设置正在执行，请稍后重试");
  else if(mutation&&!fixture&&strcmp(jstr(request,"action"),"power.standby")&&access("/tmp/u60-standby/active",F_OK)==0)result=reply(0,"正在恢复休眠前的服务，请稍后重试");

@@ -20,6 +20,16 @@
 | Go / musl / LLVM compiler-rt | 构建运行库的许可与版权见 licenses/；工具链本身不打包 |
 | [XiaoMiku01/TetherKit](https://github.com/XiaoMiku01/TetherKit) | 可选的 macOS RNDIS 用户态桥接；本项目只提供调用上游 Homebrew 的助手，不复制其源码或二进制。上游当前声明 MIT，安装和更新由 Homebrew/上游负责 |
 
+## eSIM 来源与许可
+
+本轮网络功能吸收了以下固定上游实现的接口模式，未复制其完整程序或替换本项目 owner：SadykovIV/ZTE_U60Pro（MIT，电脑网络代联网）、GodBlessAmerica/zte-u60pro-proxy-mode（MIT，MAC 策略）、huiyi9420/xiaohaiguan（MIT，Mihomo TPROXY/诊断）和 czwstc/MU5250-Wireguard（MIT，单 Peer WireGuard 导入）。对应提交、吸收位置和适配差异见 [开源吸收对照](UPSTREAM-LEARNING.md)。
+
+- `esim-agent/src/esim.rs`、`lpac.rs`、`qmi.rs` 和 `process_runner.rs` 适配自 [acloudpeng/U60Pro-OpenUI](https://github.com/acloudpeng/U60Pro-OpenUI/tree/7bb9bb62e046f2c8ff272d0069cf58b2cb912564)，固定参考提交 `7bb9bb62e046f2c8ff272d0069cf58b2cb912564`。原版权与 MIT 许可完整保留在 `licenses/OpenUI-MIT.txt`。本项目只复用 eUICC 协议桥与其有界子进程工具，没有安装对方的网页、启动项或设备服务。
+- `lpac` 来自 [estkme-group/lpac v2.3.0](https://github.com/estkme-group/lpac/tree/c2fcf5e4b21c712d54e35a11da2ad9ad134fb821)，含上述 OpenUI 的 9 个补丁。AGPL-3.0-only、libeuicc 的 LGPL-2.1-only、cJSON 的 MIT 文本与出处见 `licenses/lpac/`。安装包携带精确源码归档、补丁与构建脚本，独立二进制位于 `/data/u60-panel/lpac`。
+- 网页二维码解码使用 [jsQR 1.4.0](https://www.npmjs.com/package/jsqr/v/1.4.0)，Apache-2.0。原许可随 `web/vendor/jsQR-LICENSE.txt` 及安装后的同名文件提供。npm 归档 SHA-256 为 `b5299b37917a1fe7a8cab9dd5cc6b8accf82663add80abe5bf7761a921cc6602`。
+- `esim-agent/certs/` 的三份公开 GSMA CI 根证书随上述固定版本取得，用于验证 SM-DP+ HTTPS；证书验证不会被自动关闭。
+- Rust 工作进程依赖由 `esim-agent/Cargo.lock` 固定；各 crate 的原许可与版权，以及本地候选所用 Rust 1.95.0 标准库的许可与第三方声明，保留在 `licenses/rust/`。构建期的宏依赖声明一并提供。
+
 项目修改包含：新的五页屏幕与控制层、Wi-Fi/USB/待机协调、原厂网页增强、Clash/Tailscale管理与公开安装流程。第三方头文件与库的原版权人信息是必须保留的许可证信息，不属于用户私人信息。
 
 原厂程序、字体、网页与硬件驱动归各自权利人所有。安装准备过程只在用户设备和本机生成派生网页覆盖层，公开仓库不携带这些原厂资源，不提供固件镜像。

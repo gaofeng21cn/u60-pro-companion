@@ -99,9 +99,20 @@ define(['jquery','u60-web-model'],function($,m){
    if(p.exit_node)line.append(n('span','u60-badge','可作出口节点'));if(!p.online)line.append(n('p','u60-help','最近在线：'+date(p.last_seen)));
    if(p.online&&(p.ips||[]).length)line.append(button('连通测试',function(){api.open(act('测试 '+p.name,'tailscale.peer_test',{ip:p.ips[0]},false));}));list.append(line);});}search.on('input',show);show();return wrap;
  }
+ function network(data,api){
+  var wrap=n('div','u60-advanced'),status=data.status||{},policy=data.policy||{},enabled=policy.enabled===true,available=status.available===true&&status.mihomo_ready===true,clients=(data.clients&&data.clients.clients)||[],targets=data.targets||['DIRECT'];
+  var summary=card('按设备网络策略'),body=n('div','u60-card-body').appendTo(summary);
+  body.append(row('当前出口',data.profile||'未知'),row('终端增强',enabled?'已启用':'已停用'),row('TCP 策略',status.tcp_policy_hook?'已接管':'未接管'),row('UDP TPROXY',status.udp_tproxy_hook?'已接管':'未接管'),row('IPv6',status.ipv6_guard_hook?'旁路保护':'未保护'),row('UDP 观测',data.udp_observation&&data.udp_observation.available?String(data.udp_observation.connections)+' 个活跃连接':'暂无真实样本'));
+  var masterArgs={revision:data.revision,enabled:!enabled,udp:!!policy.udp,guard6:!!policy.guard6,clients:enabled?(policy.clients||[]):[]};var master=act((enabled?'停用':'启用')+'终端增强','web.network.save',masterArgs,true);master.reason=available?'只管理本项目规则和 Mihomo listener，不改变原厂网络。':(status.available===true?'Mihomo 核心尚未就绪，已隐藏启用入口。':'当前设备缺少可用网络策略依赖，已隐藏执行入口。');body.append(button((enabled?'停用':'启用')+'终端增强',function(){api.open(master);},'u60-primary').prop('disabled',enabled?false:!available));
+  if(enabled){[['udp','UDP TPROXY'],['guard6','IPv6 旁路保护']].forEach(function(x){var on=!!policy[x[0]],args={revision:data.revision,enabled:true,udp:x[0]==='udp'?!on:!!policy.udp,guard6:x[0]==='guard6'?!on:!!policy.guard6,clients:(policy.clients||[])};var item=act((on?'关闭 ':'开启 ')+x[1],'web.network.save',args,true);item.reason=x[0]==='guard6'?'只阻断未纳入策略的 IPv6 旁路，不是完整 IPv6 代理。':'UDP 需要设备内核和 Mihomo TPROXY 支持；失败会回退旧规则。';body.append(button((on?'关闭 ':'开启 ')+x[1],function(){api.open(item);},'u60-secondary').prop('disabled',x[0]==='udp'?!status.tproxy_supported:x[0]==='guard6'?!status.ipv6_guard_supported:false));});}
+  body.append(n('p','u60-scope',available?'UDP/IPv6 状态来自配置、规则和活跃连接观测；没有真实流量样本时显示未知。':(status.available===true?'Mihomo 核心尚未就绪，终端增强保持停用。':'当前设备未提供网络策略依赖，原厂网络和现有 Mihomo 保持不变。')));wrap.append(summary);
+  var list=card('连接设备 · '+clients.length),lb=n('div','u60-card-body').appendTo(list);if(!clients.length)lb.append(n('p','u60-help','当前没有 DHCP 租约；设备上线后按 MAC 记录。'));
+  clients.forEach(function(c){var saved=(policy.clients||[]).find(function(x){return String(x.mac).toLowerCase()===String(c.mac).toLowerCase();}),current=saved?saved.target:'DIRECT',choices=targets.map(function(t){return {label:t,value:t};});var line=n('div','u60-provider').append(n('div','u60-provider-heading').append(n('strong','',c.hostname&&c.hostname!=='unknown'?c.hostname:c.mac),n('span','u60-badge',c.ip||'IP 未知')),n('p','u60-help',c.mac+' · '+(c.policy==='managed'?'已有策略':'未管理')));line.append(button('设置线路 · '+current,function(){api.open(form('设置 '+c.mac,'web.network.save',{revision:data.revision,udp:!!policy.udp,guard6:!!policy.guard6,selected_mac:c.mac,clients:(policy.clients||[]).filter(function(x){return x.mac!==c.mac;}).concat([{mac:c.mac,target:current}])},[field('target','线路',current,'choice',true,choices)],'按 MAC 保存；随机 MAC 会形成新的终端身份。应用后请重新连接该设备.'));},'u60-small-button'));lb.append(line);});wrap.append(list);
+  return wrap;
+ }
  return {
-  render:function(tab,data,api){return tab==='clash'?clash(data,api):tailscale(data,api);},
+  render:function(tab,data,api){return tab==='clash'?clash(data,api):tab==='network'?network(data,api):tailscale(data,api);},
   /* Only the live connection list needs a short refresh interval. */
-  intervalFor:function(tab){return tab==='clash'&&subtab==='connections'?5000:20000;}
+  intervalFor:function(tab){return tab==='clash'&&subtab==='connections'?5000:tab==='network'?10000:20000;}
  };
 });

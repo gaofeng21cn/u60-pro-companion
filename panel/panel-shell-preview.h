@@ -5,9 +5,10 @@ static void shell_preview_fixture(struct app*a){
  a->shell.snapshot=cJSON_Parse("{\"ok\":true,\"data\":{\"download_bps\":12792627,\"upload_bps\":1814036,\"today_bytes\":2329282334,\"month_bytes\":72209832263,\"battery\":86,\"temperature\":38,\"clients\":4,\"operator\":\"中国电信\",\"network\":\"5G SA\",\"wifi_status\":\"双频已开启\",\"usb_status\":\"USB 网络共享\",\"clash_status\":\"运行中 · 规则\",\"tailscale_status\":\"已连接\"},\"sections\":[{\"id\":\"wifi\",\"title\":\"Wi-Fi\",\"items\":[{\"label\":\"Wi-Fi 开关\",\"value\":true,\"type\":\"toggle\",\"action\":\"wifi.toggle\",\"args\":{\"enabled\":false}},{\"label\":\"无线名称与密码\",\"value\":\"U60-PRO\",\"type\":\"form\",\"action\":\"wifi.settings\",\"fields\":[{\"key\":\"ssid\",\"label\":\"网络名称\",\"value\":\"U60-PRO\",\"required\":true},{\"key\":\"password\",\"label\":\"Wi-Fi 密码\",\"kind\":\"password\",\"value\":\"preview-only\"},{\"key\":\"band\",\"label\":\"频段\",\"kind\":\"choice\",\"value\":\"5g\",\"choices\":[{\"label\":\"2.4 GHz\",\"value\":\"2g\"},{\"label\":\"5 GHz\",\"value\":\"5g\"}]}]},{\"label\":\"MLO\",\"value\":\"未提供\",\"type\":\"toggle\",\"enabled\":false,\"reason\":\"设备尚未提供可靠的开关状态，因此暂不能修改。\"}]},{\"id\":\"clash\",\"title\":\"Clash\",\"items\":[{\"label\":\"代理服务\",\"value\":\"运行中\",\"type\":\"info\"},{\"label\":\"工作模式\",\"value\":\"规则\",\"type\":\"choice\",\"action\":\"clash.mode\",\"choices\":[{\"label\":\"规则\",\"args\":{\"mode\":\"rule\"}},{\"label\":\"全局\",\"args\":{\"mode\":\"global\"}},{\"label\":\"直连\",\"args\":{\"mode\":\"direct\"}}]},{\"label\":\"默认代理\",\"value\":\"香港 · 优选 01\",\"type\":\"choice\",\"action\":\"clash.select\",\"choices\":[{\"label\":\"香港 · 优选 01\",\"args\":{\"name\":\"香港 · 优选 01\"}},{\"label\":\"日本 · 东京 02\",\"args\":{\"name\":\"日本 · 东京 02\"}}]},{\"label\":\"订阅剩余额度\",\"value\":\"168.4 / 200 GB\",\"type\":\"info\"},{\"label\":\"当前连接\",\"value\":\"18 个\",\"type\":\"info\"}]},{\"id\":\"tailscale\",\"title\":\"Tailscale\",\"items\":[{\"label\":\"组网状态\",\"value\":\"已连接\",\"type\":\"info\"},{\"label\":\"设备地址\",\"value\":\"100.64.0.2\",\"type\":\"info\"},{\"label\":\"断开组网\",\"type\":\"action\",\"action\":\"tailscale.down\",\"confirm\":true}]}]}");
  assert(a->shell.snapshot);
  cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"cell\",\"title\":\"蜂窝网络\",\"items\":[{\"id\":\"signal\",\"label\":\"信号格数\",\"type\":\"info\",\"value\":\"5\"}]}"));
+ cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"network-control\",\"title\":\"终端网络\",\"items\":[{\"id\":\"network-status\",\"label\":\"网络能力\",\"type\":\"info\",\"value\":\"网页查看状态与启停\"},{\"id\":\"network-clients\",\"label\":\"连接设备\",\"type\":\"info\",\"value\":\"网页按 MAC 管理\"}]}"));
  cJSON*d=sh_get(a->shell.snapshot,"data");cJSON_AddNumberToObject(d,"cpu_percent",12.123456);cJSON_AddNumberToObject(d,"memory_percent",48.345678);cJSON_AddStringToObject(d,"network_profile","clash");cJSON_AddNumberToObject(d,"uptime_seconds",13320);cJSON_AddStringToObject(d,"clock_text","14:32");cJSON_AddStringToObject(d,"signal","-83 dBm");cJSON_AddStringToObject(d,"band","n78");cJSON_AddStringToObject(d,"physical_iface","蜂窝");cJSON_AddItemToObject(d,"clash",cJSON_Parse("{\"online\":true,\"mode\":\"rule\",\"node\":\"香港 · 优选 01\",\"upload\":127534254,\"download\":2132353321,\"quota_remaining\":180818123161,\"connections\":18}"));
 }
-static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_PREV && a->hits[i].id!=SH_NEXT && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++)assert(!(a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0));}}
+static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++)assert(!(a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0));}}
 static void shell_preview_write(struct drm_buf*b,const char*dir,int page){char path[1024];int i;snprintf(path,sizeof(path),"%s/shell-%02d.ppm",dir,page);FILE*f=fopen(path,"wb");assert(f);fprintf(f,"P6\n320 480\n255\n");for(i=0;i<320*480;i++){uint16_t p=b->map[i];unsigned char rgb[]={((p>>11)&31)*255/31,((p>>5)&63)*255/63,(p&31)*255/31};fwrite(rgb,1,3,f);}fclose(f);}
 static cJSON *shell_preview_large_choices(struct app*a){
  cJSON*it=cJSON_CreateObject();cJSON_AddStringToObject(it,"label","全部代理节点");cJSON_AddStringToObject(it,"type","choice");cJSON_AddStringToObject(it,"action","preview.select");cJSON_AddBoolToObject(it,"confirm",1);
@@ -143,12 +144,17 @@ static void shell_preview_live_regressions(struct drm_buf*b){
  fprintf(stderr,"Live snapshot regression: Clash=%s clock=%s\n",clash_ok?"PASS":"FAIL",clock_ok?"PASS":"FAIL");
  assert(clash_ok&&clock_ok);
  /* The verified routing verdict, not core-online or legacy text, owns outlet. */
- a.clash_online=1;cJSON_AddStringToObject(d,"clash_status","运行中");cJSON_ReplaceItemInObject(cl,"online",cJSON_CreateBool(1));cJSON_AddStringToObject(cl,"verdict","direct");shell_render(b,&a);
+ a.clash_online=1;cJSON_AddStringToObject(d,"clash_status","运行中");cJSON_ReplaceItemInObject(cl,"online",cJSON_CreateBool(1));shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_AddStringToObject(cl,"verdict","direct");shell_render(b,&a);
  assert(!shell_preview_same_region(b,before,12,70,308,94));
  cJSON_DeleteItemFromObject(cl,"verdict");assert(!strcmp(sh_outlet(d),"代理未核验"));
  char clock_buf[16];sh_clock_text(0,clock_buf,sizeof(clock_buf));assert(!strcmp(clock_buf,"--:--"));
  assert(text_width("100",14)<=28&&text_width("23:59",22)<=58);
  cJSON*usage=cJSON_AddObjectToObject(d,"usage");cJSON_AddStringToObject(usage,"warning","normal");shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("threshold"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,184,305,201));
+ /* Unknown SIM sampling cannot display an old cycle as current usage. The
+  * snapshot also distinguishes an existing file from this sample being saved. */
+ cJSON_AddBoolToObject(usage,"available",1);cJSON_AddBoolToObject(usage,"persisted",0);cJSON_AddBoolToObject(usage,"stored_ledger_exists",1);cJSON_AddNumberToObject(usage,"used_bytes",1500000000);assert(!strcmp(sh_usage_saved(usage),"已有存档 · 本次估算"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));
+ cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(0));assert(!strcmp(sh_usage_saved(usage),"读数未知 · 存档保留"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,206,305,229));
+ cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"persisted",cJSON_CreateBool(1));assert(!strcmp(sh_usage_saved(usage),"本次已保存"));
  sh_close(&a);cJSON_Delete(a.shell.snapshot);
 }
 static void shell_preview_reports(struct drm_buf*b,const char*dir){
@@ -172,7 +178,7 @@ static void shell_preview_reports(struct drm_buf*b,const char*dir){
 static void shell_preview_schema(struct drm_buf*b,const char*dir){
  const char*path=getenv("U60_PREVIEW_SCHEMA");if(!path)return;FILE*f=fopen(path,"rb");assert(f);char buf[65536];size_t n=fread(buf,1,sizeof(buf)-1,f);assert(feof(f));fclose(f);buf[n]=0;
  cJSON*r=cJSON_Parse(buf);assert(r);struct app a;shell_preview_fixture(&a);cJSON_Delete(a.shell.snapshot);a.shell.snapshot=r;panel_menu_layout(r);a.shell.tab=4;int page=24;cJSON*section;
- cJSON_ArrayForEach(section,sh_get(r,"sections")){sh_open_section(&a,sh_str(section,"id",""));int count=cJSON_GetArraySize(sh_get(section,"items"));for(int k=0;k*5<count;k++){a.shell.item_page=k*315;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,page++);}}
+ cJSON_ArrayForEach(section,sh_get(r,"sections")){sh_open_section(&a,sh_str(section,"id",""));int count=cJSON_GetArraySize(sh_get(section,"items"));for(int k=0;k*SH_PAGE_ITEMS<count;k++){a.shell.item_page=k*SH_PAGE_OFFSET;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,page++);}}
  if(sh_section(&a,"battery")){
   sh_open_section(&a,"battery");cJSON*items=sh_get(sh_section(&a,"battery"),"items");
   for(int n=0;n<cJSON_GetArraySize(items);n++)if(!strcmp(sh_str(cJSON_GetArrayItem(items,n),"id",""),"menu.battery_details")){
@@ -202,11 +208,12 @@ static void shell_preview_root_navigation(struct drm_buf*b){
  struct app a;shell_preview_fixture(&a);
  for(int tab=2;tab<=3;tab++){
   a.shell.tab=tab;sh_open_section(&a,tab==2?"clash":"tailscale");shell_render(b,&a);
-  for(int h=0;h<a.nhits;h++)assert(a.hits[h].id!=SH_BACK);
-  snprintf(a.shell.status,sizeof(a.shell.status),"操作完成");a.shell.status_until=now_ms()+10000;shell_render(b,&a);int found=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_STATUS)found=1;assert(found);a.shell.status[0]=0;
+  int back=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_BACK){assert(a.hits[h].x0==0&&a.hits[h].x1==44&&a.hits[h].y0==0&&a.hits[h].y1==44);back++;}assert(back==1);
+  snprintf(a.shell.status,sizeof(a.shell.status),"操作完成");a.shell.status_until=now_ms()+10000;shell_render(b,&a);int found=0;back=0;for(int h=0;h<a.nhits;h++){if(a.hits[h].id==SH_STATUS)found=1;if(a.hits[h].id==SH_BACK)back++;}assert(found&&back==1);shell_preview_hits(&a);a.shell.status[0]=0;
+  shell_hit(&a,SH_BACK);assert(a.shell.tab==0&&!a.shell.subpage);
  }
  a.shell.tab=1;sh_open_section(&a,"wifi");shell_render(b,&a);int found=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_BACK)found=1;assert(found);cJSON_Delete(a.shell.snapshot);
- puts("PASS: Clash/Tailscale roots have no back hit; nested settings and action receipts remain accessible");
+ puts("PASS: fixed 44px back on every detail page, independent action receipt, service roots return to home");
 }
 static void shell_preview_readonly(struct drm_buf*b){
  struct app a;shell_preview_fixture(&a);a.shell.tab=2;sh_open_section(&a,"clash");shell_render(b,&a);
@@ -246,13 +253,23 @@ static void shell_preview_scroll_gestures(struct drm_buf*b,const char*dir){
  sh_theme=theme;struct app a;shell_preview_fixture(&a);a.shell.tab=4;shell_render(b,&a);
  uint16_t before[320*480];memcpy(before,b->map,sizeof(before));
  shell_pointer(&a,130,350,1,0);shell_pointer(&a,130,300,1,0);shell_render(b,&a);shell_pointer(&a,130,180,1,0);shell_render(b,&a);shell_pointer(&a,130,180,0,1);
- assert(a.shell.menu_page==170&&!a.shell.subpage&&!a.shell.modal&&!a.shell.busy);shell_preview_hits(&a);
+ assert(a.shell.menu_page==SH_PAGE_OFFSET&&!a.shell.subpage&&!a.shell.modal&&!a.shell.busy);shell_preview_hits(&a);
  assert(shell_preview_same_region(b,before,0,432,320,480));assert(shell_preview_same_region(b,before,198,0,320,44));
- /* Touch at a partially clipped row cannot hit navigation or the header. */
- for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30)assert(a.hits[i].y0>=52&&a.hits[i].y1<=428);
+ /* All four rows remain complete, and a swipe cannot become an action. */
+ int rows=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30){assert(a.hits[i].y0>=80&&a.hits[i].y1<=353&&a.hits[i].y1-a.hits[i].y0==57);rows++;}assert(rows==4);
  shell_preview_write(b,dir,200+theme);
  int old=a.shell.menu_page;shell_pointer(&a,130,20,1,0);shell_pointer(&a,130,200,1,0);shell_pointer(&a,130,200,0,1);assert(a.shell.menu_page==old);
  shell_hit(&a,SH_TAB+1);shell_render(b,&a);shell_hit(&a,SH_TAB+4);shell_render(b,&a);assert(a.shell.menu_page==old);
+ /* Daily eSIM is on the first page, and advanced/recovery remain reachable
+  * with their original action identities after the display order changes. */
+ shell_hit(&a,SH_PREV);shell_render(b,&a);assert(a.shell.menu_page==0);int esim_hit=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_SECTION+8)esim_hit++;assert(esim_hit==1);
+ shell_pointer(&a,150,325,1,0);shell_pointer(&a,150,325,0,1);assert(!strcmp(a.shell.section,"esim")&&a.shell.subpage&&!a.shell.busy);shell_render(b,&a);shell_hit(&a,SH_BACK);shell_render(b,&a);assert(!a.shell.subpage&&a.shell.menu_page==0);
+ shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==2*SH_PAGE_OFFSET);int diagnostic=0,recovery=0,next=0;for(int h=0;h<a.nhits;h++){diagnostic+=a.hits[h].id==SH_SECTION+7;recovery+=a.hits[h].id==SH_FACTORY;next+=a.hits[h].id==SH_NEXT;}assert(diagnostic==1&&recovery==1&&next==0);shell_preview_hits(&a);shell_preview_write(b,dir,203+theme);
+ /* The terminal-auth bypass page is appended last so every earlier page id
+  * stays stable; it opens as its own page and is distinct from the factory
+  * row that closes the list. */
+ int bypass=0;for(int h=0;h<a.nhits;h++)bypass+=a.hits[h].id==SH_SECTION+10;assert(bypass==1);
+ shell_hit(&a,SH_SECTION+10);assert(!strcmp(a.shell.section,"auth-bypass")&&a.shell.subpage);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,205+theme);shell_hit(&a,SH_BACK);assert(!a.shell.subpage);
  /* 96 nodes: bottom row mapping after multiple drags, no inadvertent select. */
  cJSON*it=shell_preview_large_choices(&a);sh_open_item(&a,it);shell_render(b,&a);
  for(int i=0;i<35;i++){shell_pointer(&a,100,390,1,0);shell_pointer(&a,100,160,1,0);shell_pointer(&a,100,160,0,1);shell_render(b,&a);assert(a.shell.modal==1&&!a.shell.pending_args);}
@@ -265,7 +282,7 @@ static void shell_preview_scroll_gestures(struct drm_buf*b,const char*dir){
  for(int i=0;i<10;i++){shell_pointer(&a,100,370,1,0);shell_pointer(&a,100,120,1,0);shell_pointer(&a,100,120,0,1);shell_render(b,&a);}
  assert(a.shell.field_page==a.shell.scroll_max);shell_preview_hits(&a);row=-1;for(int i=0;i<a.nhits;i++)if(a.hits[i].id==SH_FIELD+23)row=i;assert(row>=0);
  y=(a.hits[row].y0+a.hits[row].y1)/2;shell_pointer(&a,100,y,1,0);shell_pointer(&a,100,y,0,1);assert(a.shell.editor&&a.shell.field==23);shell_render(b,&a);assert(!a.shell.scroll_offset);sh_close(&a);cJSON_Delete(a.shell.snapshot);
- }sh_theme=0;puts("PASS: all themes gesture suppression, edge clipping, fixed chrome, remembered menu, last of 96 nodes, last of 24 fields");
+ }sh_theme=0;puts("PASS: all themes four complete menu rows, swipe page mapping, fixed chrome, remembered menu, last of 96 nodes, last of 24 fields");
 }
 static void shell_preview_management(struct drm_buf*b,const char*dir){
  struct app a;shell_preview_fixture(&a);
@@ -326,6 +343,11 @@ static int shell_preview_main(const char*dir){
   else a.shell.power_open=1;
   shell_render(&b,&a);shell_preview_hits(&a);shell_preview_write(&b,dir,page);sh_close(&a);cJSON_Delete(a.shell.snapshot);
  }
+ /* The optional per-device network module is intentionally a read-only
+  * pointer on the small screen; capture its second network-menu page and
+  * detail view so UI review covers the learned capability on both surfaces. */
+ shell_preview_fixture(&a);a.shell.tab=1;a.shell.menu_page=SH_PAGE_OFFSET;shell_render(&b,&a);shell_preview_hits(&a);shell_preview_write(&b,dir,400);
+ sh_open_section(&a,"network-control");shell_render(&b,&a);shell_preview_hits(&a);shell_preview_write(&b,dir,401);sh_close(&a);cJSON_Delete(a.shell.snapshot);
  /* A new snapshot cannot destroy the open form or its unsaved edits. */
  shell_preview_fixture(&a);sh_open_item(&a,cJSON_GetArrayItem(sh_get(sh_section(&a,"wifi"),"items"),1));shell_hit(&a,SH_FIELD);shell_hit(&a,SH_KEY);assert(!strcmp(a.shell.values[0],"U60-PROa"));cJSON_Delete(a.shell.snapshot);a.shell.snapshot=cJSON_CreateObject();assert(!strcmp(a.shell.values[0],"U60-PROa"));assert(!strcmp(sh_str(a.shell.draft,"label",""),"无线名称与密码"));shell_hit(&a,SH_DONE);shell_hit(&a,SH_FIELD+2);assert(a.shell.modal==5);shell_hit(&a,SH_CHOICE);assert(!strcmp(a.shell.values[2],"2g"));assert(a.shell.modal==4);
  shell_hit(&a,SH_FIELD);memset(a.shell.values[0],'x',SHELL_VALUE_CAP-1);a.shell.values[0][SHELL_VALUE_CAP-1]=0;shell_hit(&a,SH_KEY);assert(strlen(a.shell.values[0])==SHELL_VALUE_CAP-1);strcpy(a.shell.values[0],"中文");shell_hit(&a,SH_DELETE);assert(!strcmp(a.shell.values[0],"中"));shell_hit(&a,SH_DONE);shell_hit(&a,SH_CANCEL);assert(!a.shell.draft);cJSON_Delete(a.shell.snapshot);

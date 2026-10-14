@@ -14,7 +14,7 @@ class Preparation(unittest.TestCase):
    with self.assertRaises(ValueError):m.patch_web(name,patched,m.sha(data))
   menu=m.patch_web('js/config/ufi/U60Pro/menu.js',examples['js/config/ufi/U60Pro/menu.js'],m.sha(examples['js/config/ufi/U60Pro/menu.js']))
   self.assertIn(b'requireLogin:!0',menu)
-  self.assertEqual(menu.count(b'path:"auth/u60-enhanced"'),6)
+  self.assertEqual(menu.count(b'path:"auth/u60-enhanced"'),7)
  def test_menu_added_after_nested_stock_entries(self):
   data=b'<ul class="main-navigation-list"><li>stock<ul><li>nested</li></ul></li></ul><script data-main="js/main">'
   result=m.patch_web('index.html',data,m.sha(data))

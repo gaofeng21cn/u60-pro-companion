@@ -58,6 +58,14 @@ with tempfile.TemporaryDirectory(prefix='u60-control-test-') as tmp:
  r=call('wifi.show_password',{'section':'invalid'});assert not r['ok'] and r['fixture_write_count']==0
  r=call('wifi.show_password',{'section':'main_2g'});assert not r['ok'] and r['fixture_write_count']==0
  r=call('state',patch={'wifi_password_read':{'ok':True,'password':'PRIVATE-VIEW-ONLY'}});assert 'PRIVATE-VIEW-ONLY' not in json.dumps(r)
+ # Optional download IMEI is read only on request and does not expose other modem fields.
+ for imei in ['000000000000001','0000000000000001']:
+  r=call('esim.imei',patch={'zwrt_zte_mdm.api.get_imei':{'imei':imei,'imsi':'SHOULD_NEVER_APPEAR'}})
+  assert r['ok'] and r['imei']==imei and r['fixture_write_count']==0
+ for response in [{}, {'imei':'not-an-imei'}, {'imei':'000000000000001','error_code':1}]:
+  r=call('esim.imei',patch={'zwrt_zte_mdm.api.get_imei':response})
+  assert not r['ok'] and 'imei' not in r and r['fixture_write_count']==0
+ r=call('state',patch={'zwrt_zte_mdm.api.get_imei':{'imei':'PRIVATE-VIEW-ONLY'}});assert 'PRIVATE-VIEW-ONLY' not in json.dumps(r)
  s=call('state');assert s['ok'];assert s['data']['today_bytes']==120 and s['data']['month_bytes']==560
  wifi=next(sec['items'] for sec in s['sections'] if sec['id']=='wifi')
  assert [i['id'] for i in wifi[:4]]==['power','main_2g.enabled','main_5g.enabled','sleep']
@@ -128,7 +136,7 @@ with tempfile.TemporaryDirectory(prefix='u60-control-test-') as tmp:
   assert r['data']['usb']['badge']==badge and r['data']['usb']['state']==state
   sec=next(x for x in r['sections'] if x['id']=='usb')
   assert sec['items'][0]['enabled'] and all(not i['enabled'] for i in sec['items'][1:])
- assert {x['id'] for x in s['sections']}=={'wifi','usb','tailscale','cell','system','router'}
+ assert {x['id'] for x in s['sections']}=={'wifi','usb','tailscale','cell','system','router','esim','auth-bypass'}
  for sec in s['sections']:
   for item in sec['items']:
    for f in item.get('fields',[]):

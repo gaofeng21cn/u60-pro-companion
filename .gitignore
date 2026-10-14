@@ -12,3 +12,6 @@ charge-verified
 wifi-password-verified
 u60-prepared-private/
 prepared*/
+
+esim-agent/target/
+.playwright-cli/

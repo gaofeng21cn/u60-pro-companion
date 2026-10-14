@@ -7,6 +7,11 @@ GO=${GO:-go}
  echo 'Build requires Zig 0.14.1; set ZIG to that executable. No artifacts changed.' >&2
  exit 1
 }
+command -v cargo >/dev/null || { echo 'Building eSIM support requires Rust cargo 1.87+.' >&2; exit 1; }
+rustup target list --installed 2>/dev/null | grep -qx 'aarch64-unknown-linux-musl' || {
+ echo 'Install the Rust target aarch64-unknown-linux-musl before building eSIM support.' >&2
+ exit 1
+}
 mkdir -p build/link
 cc() { "$ZIG" cc -target aarch64-linux-musl -O2 -s -Wall -Wextra "$@"; }
 cc -static -D__user= -I sdk -I panel/vendor panel/u60-panel.c panel/vendor/cJSON.c panel/vendor/qrcodegen.c -lm -o build/u60-panel
@@ -23,4 +28,9 @@ done
 cc -dynamic -I panel/vendor panel/panel-wifi-crypto.c panel/vendor/cJSON.c -ldl -L build/link -Wl,--no-as-needed -lztecrypto -Wl,--dynamic-linker=/lib/ld-musl-aarch64.so.1 -o build/panel-wifi-crypto
 cc -dynamic panel/panel-standby.c -ldl -L build/link -Wl,--no-as-needed -luci -Wl,--dynamic-linker=/lib/ld-musl-aarch64.so.1 -o build/panel-standby
 (cd web/controller; CGO_ENABLED=0 GOOS=linux GOARCH=arm64 "$GO" build -trimpath -ldflags '-s -w' -o ../../build/panel-web-control .)
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="$(pwd)/scripts/rust-linker.py" \
+ ZIG="$ZIG" cargo build --locked --release --manifest-path esim-agent/Cargo.toml \
+ --target aarch64-unknown-linux-musl
+cp esim-agent/target/aarch64-unknown-linux-musl/release/u60-esim build/u60-esim
+ZIG="$ZIG" python3 scripts/prepare-lpac.py --target aarch64
 echo 'Built ARM64 programs in build/'

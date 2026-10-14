@@ -1,5 +1,19 @@
 # 更新记录
 
+## 未发布：GitHub 能力吸收与模块化候选
+
+- 固定并记录 SadykovIV/ZTE_U60Pro、acloudpeng/U60Pro-OpenUI、GodBlessAmerica/zte-u60pro-proxy-mode、huiyi9420/xiaohaiguan、scoltzero/remix、huangtengsz-ui 和 czwstc/MU5250-Wireguard 的学习提交、许可证与本地取舍。
+- 保留 eSIM、电脑代联网、按设备 TCP/DNS、UDP TPROXY、IPv6 旁路保护和流量/UI 层级；WireGuard 仅保留研究记录，不增加第二个网络 owner。
+- 网络增强收敛为可探测、默认关闭、各自启停、只清理本项目规则与 listener 的独立模块；停用在缺少可选依赖时也能安全清理，原厂网络和现有 Mihomo 仍是默认路径。
+- ARM64 候选包 `v0.1.18-learned` 已生成；主机回归和构建通过，eSIM 与网络增强的 B31 实机业务仍待验收。
+
+## 未发布：eSIM 候选
+
+- 为国行 B31 添加 SIM 卡槽中的 9eSIM、5ber、eSTK.me 等可插拔 eUICC 读卡、配置下载与管理，没有品牌白名单；普通 SIM 和内置 ZTE eSIM 不提供写入。
+- 网页复用原厂登录与七项导航；小屏增加 eSIM 读卡和切换入口。
+- 操作前重新确认 EID，锁定设备设置写入，回读配置变化，失败或中断不自动重试下载；升级拒绝替换运行中的卡片作业。
+- 保留 SM-DP+ TLS 验证、通知、精确源码和许可证；补齐卡片与配置详情、粘贴二维码截图、读取本机 IMEI、通知详情与批量处理。现在只有主机及模拟设备证据，各品牌实际卡片与运营商服务器仍待验收。
+
 ## v0.1.16-experimental
 
 - 新增 B31 原生 Mac USB 联网开关，通过中兴原厂 owner 提供 ECM＋ADB；两端共用启停状态，保存启动意图，升级前要求关闭。未知固件拒绝切换，失败按完整原厂快照恢复。

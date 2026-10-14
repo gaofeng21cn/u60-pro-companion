@@ -6,6 +6,8 @@
 
 **当前版本：[v0.1.16-experimental](https://github.com/gaofeng21cn/u60-pro-enhanced/releases/tag/v0.1.16-experimental)**。这是实验版：支持固件检查和设备身份绑定，不代表全部网络与硬件组合已经验收。安装前请阅读[验证范围](docs/VALIDATION.md)。B31 的 Mac 数据线直连采用原生 ECM＋ADB，无需安装 Mac 软件；在“网络 → USB 数据线直连”开启一次并保存选择。已验收项目与仍需实物验证的范围见下文。
 
+源码新增 **eSIM 候选能力**：国行 B31 的 SIM 卡槽插入 9eSIM、5ber、eSTK.me 等可插拔 eUICC，网页支持读卡、下载、切换、停用、改名、删除与通知，小屏支持读卡和切换。实现按标准 eUICC 接口识别卡片，没有品牌白名单；具体卡片版本仍需实测。现有 `v0.1.16-experimental` 公开包不含此功能；本地候选包与实机待验收边界见 [eSIM 说明](docs/ESIM.md)。
+
 ## 先确认你的设备
 
 | 项目 | 要求 |
@@ -108,7 +110,7 @@ Wi-Fi 接力入口为“小屏：网络 → Wi-Fi → 连接上游 Wi-Fi；网�
 
 ## 从源码构建
 
-仅开发者需要 Zig **0.14.1**、Go、C 编译器和 Node.js；下载 Release 的用户无需安装这些工具。
+仅开发者需要 Zig **0.14.1**、Go、Python 3、Rust **1.87+**（含 `aarch64-unknown-linux-musl` target）、C 编译器和 Node.js；下载 Release 的用户无需安装这些工具。
 
 ```sh
 ZIG=/path/to/zig-0.14.1 sh scripts/build.sh

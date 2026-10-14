@@ -1,0 +1,18 @@
+[package]
+name = "u60-esim"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Removable eUICC profile bridge for U60 Pro Enhanced"
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "u60-esim"
+path = "src/main.rs"
+
+[profile.release]
+strip = true
