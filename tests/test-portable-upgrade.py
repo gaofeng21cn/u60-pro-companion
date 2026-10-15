@@ -61,7 +61,7 @@ class PortableUpgrade(unittest.TestCase):
         self.put(self.pkg / 'RELEASE-ID', 'u60-pro-B31-20260924-120000\n')
         self.put(self.pkg / 'TARGET-IDENTITY-SHA256',
                  hashlib.sha256(b'u60-imei-v1:123456789012345').hexdigest() + '\n')
-        for f in ['check-device.sh', 'upgrade-installed.sh']:
+        for f in ['check-device.sh', 'upgrade-installed.sh', 'restore-boot.sh']:
             code = (ROOT / 'scripts/portable' / f).read_text()
             for prefix in ['/data/', '/etc/', '/sys/', '/dev/dri/', '/dev/net/', '/tmp/', '/proc/']:
                 code = re.sub(r'(?<![a-zA-Z0-9_.-])' + re.escape(prefix), str(self.target) + prefix, code)
@@ -109,10 +109,13 @@ class PortableUpgrade(unittest.TestCase):
         self.put(self.target / 'data/u60-panel/portable-boot.sh', '#!/bin/sh\nexit 0\n')
         self.put(self.target / 'data/u60-user-notes.txt', 'keep me\n')
         for name in SERVICES:
-            self.put(self.target / 'etc/init.d' / name, '#!/bin/sh\ncase "$1" in start) exit 0;; restart) exit 0;;esac\n')
+            self.put(self.target / 'etc/init.d' / name, self.fake_service(name))
         self.installed_id = STATE_FILES['data/u60-panel/portable-release'].strip()
         (self.target / 'data/u60-install-backups' / self.installed_id).mkdir(parents=True)
-        self.put(self.target / 'data/u60-install-backups' / self.installed_id / 'rc.local', self.oldrc())
+        self.put(self.target / 'data/u60-install-backups' / self.installed_id / 'rc.local', self.factory_rc())
+        self.put(self.target / 'data/u60-install-backups' / self.installed_id / 'release-id',
+                 self.installed_id + '\n')
+        self.put(self.target / 'data/u60-install-backups' / self.installed_id / 'status', 'installed\n')
         # A running screen and web service, expressed as marker files for the fakes.
         (self.root / 'watcher').touch()
         (self.root / 'panel-web').touch()
@@ -192,6 +195,21 @@ else:
     def oldrc(self):
         return '#!/bin/sh\n(/data/u60-panel/portable-boot.sh) &\nexit 0\n'
 
+    def factory_rc(self):
+        # A stock rc.local, i.e. without the project boot hook.
+        return '#!/bin/sh\n# factory preserved\necho factory\nexit 0\n'
+
+    def fake_service(self, name):
+        # Record enable/disable so a test can assert the service was turned off.
+        marker = str(self.target / 'etc/rc.d') + '/' + name
+        return ('#!/bin/sh\n'
+                'case "$1" in\n'
+                ' enable) : > "' + marker + '";exit 0;;\n'
+                ' disable) rm -f "' + marker + '";exit 0;;\n'
+                ' start|stop|restart) exit 0;;\n'
+                'esac\n'
+                'exit 0\n')
+
     def tearDown(self):
         if getattr(self, 'watcher_proc', None):
             self.watcher_proc.terminate()
@@ -266,6 +284,39 @@ else:
         r = self.run_upgrade('--check')
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('Unexpected new file', r.stderr)
+
+    def test_restore_boot_works_after_an_upgrade_renamed_the_release(self):
+        # Reproduce the real failure: the in-place upgrade renames the installed
+        # release, so /data/u60-install-backups/<current> does not exist and the
+        # old restore-boot.sh aborted. It must now find the factory rc.local and
+        # return the device to stock boot.
+        r = self.run_upgrade('upgrade')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotEqual((self.target / 'data/u60-panel/portable-release').read_text().strip(),
+                            self.installed_id)
+        self.assertFalse((self.target / 'data/u60-install-backups' /
+                          (self.target / 'data/u60-panel/portable-release').read_text().strip()).exists())
+        r = subprocess.run(['sh', str(self.pkg / 'restore-boot.sh')],
+                           env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('Stock boot restored', r.stdout)
+        self.assertEqual((self.target / 'etc/rc.local').read_text(), self.factory_rc())
+
+    def test_restore_boot_stops_and_disables_every_installed_service(self):
+        # A first-install-only revert used to leave the terminal-auth guard and
+        # the USB maintenance transactions enabled. The restore must clear all
+        # of them, not just the original five.
+        all_services = ['u60-usb-isolate', 'u60-usb-role', 'u60-wifi-relay', 'u60-standby',
+                        'u60-web', 'u60-auth-bypass', 'u60-ncm-trial', 'u60-ecm-trial']
+        for name in all_services:
+            self.put(self.target / 'etc/init.d' / name, self.fake_service(name))
+            (self.target / 'etc/rc.d' / name).write_text('')
+        r = subprocess.run(['sh', str(self.pkg / 'restore-boot.sh')],
+                           env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for name in all_services:
+            self.assertFalse((self.target / 'etc/rc.d' / name).exists(),
+                             f'{name} must be disabled by restore-boot')
 
     def test_check_is_readonly_and_lists_the_plan(self):
         before = sorted(str(p) for p in self.target.rglob('*'))
