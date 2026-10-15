@@ -48,6 +48,23 @@ def make_env(tmp, uci_state):
         esac
     """))
     (bindir / "ip6tables").write_text((bindir / "iptables").read_text())
+    init = bindir / "u60-auth-init"
+    init.write_text(textwrap.dedent(f"""
+        #!/bin/sh
+        case "$1" in
+          enable) : > "$AUTH_INIT_STATE.enabled" ;;
+          disable) rm -f "$AUTH_INIT_STATE.enabled" ;;
+          start)
+            sh "$AUTH_BYPASS_SCRIPT" watch >/dev/null 2>&1 &
+            ;;
+          stop)
+            p=$(cat "$AUTH_BYPASS_PIDFILE" 2>/dev/null || true)
+            case "$p" in ''|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true ;; esac
+            ;;
+          *) exit 2 ;;
+        esac
+    """))
+    os.chmod(init, 0o755)
     os.chmod(bindir / "uci", 0o755)
     os.chmod(bindir / "iptables", 0o755)
     os.chmod(bindir / "ip6tables", 0o755)
@@ -78,6 +95,9 @@ def test_pin_and_clear(tmp):
         "AUTH_BYPASS_LOCK": str(pathlib.Path(tmp) / "lock"),
         "IPT_STORE": str(store),
         "AUTH_BYPASS_INTERVAL": "3600",
+        "AUTH_BYPASS_INIT": str(bindir / "u60-auth-init"),
+        "AUTH_INIT_STATE": str(pathlib.Path(tmp) / "init-state"),
+        "AUTH_BYPASS_SCRIPT": str(SCRIPT),
     })
     assert p.returncode == 0, p.stderr
     out = p.stdout
@@ -87,6 +107,19 @@ def test_pin_and_clear(tmp):
     assert fields["zwrt_router.tmp_router.auth_second_simcard_valid"] == "0"
     assert fields["zwrt_router.tmp_router.simcard_switch_flag"] == "0"
     assert intent.exists()
+    stop = run(bindir, ["disable"], {
+        **{
+            "AUTH_BYPASS_ROOT": str(root),
+            "AUTH_BYPASS_INTENT": str(intent),
+            "AUTH_BYPASS_PIDFILE": str(pathlib.Path(tmp) / "pid"),
+            "AUTH_BYPASS_LOCK": str(pathlib.Path(tmp) / "lock"),
+            "IPT_STORE": str(store),
+        },
+        "AUTH_BYPASS_INIT": str(bindir / "u60-auth-init"),
+        "AUTH_INIT_STATE": str(pathlib.Path(tmp) / "init-state"),
+        "AUTH_BYPASS_SCRIPT": str(SCRIPT),
+    })
+    assert stop.returncode == 0, stop.stderr
 
 
 def test_disable_returns_ownership(tmp):
@@ -101,6 +134,9 @@ def test_disable_returns_ownership(tmp):
         "AUTH_BYPASS_LOCK": str(pathlib.Path(tmp) / "lock"),
         "IPT_STORE": str(pathlib.Path(tmp) / "ipt"),
         "AUTH_BYPASS_INTERVAL": "3600",
+        "AUTH_BYPASS_INIT": str(bindir / "u60-auth-init"),
+        "AUTH_INIT_STATE": str(pathlib.Path(tmp) / "init-state"),
+        "AUTH_BYPASS_SCRIPT": str(SCRIPT),
     }
     run(bindir, ["enable"], env)
     p = run(bindir, ["disable"], env)

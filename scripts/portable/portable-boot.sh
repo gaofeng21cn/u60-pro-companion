@@ -22,5 +22,5 @@ nohup sh /data/u60-panel/usb-macnet-owner.sh boot </dev/null >/dev/null 2>&1 &
 # Saved intent survives reboots and upgrades. The guard re-pins the two
 # factory gates and clears any rebuilt enforcement chain; it is a no-op when
 # the user never enabled it.
-[ ! -f /data/u60-panel/auth-bypass-enabled ] || nohup sh /data/u60-panel/auth-bypass.sh watch </dev/null >/dev/null 2>&1 &
+[ ! -f /data/u60-panel/auth-bypass-enabled ] || /etc/init.d/u60-auth-bypass start
 exec /data/u60-panel/panel-autostart.sh

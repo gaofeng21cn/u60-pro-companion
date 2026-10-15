@@ -11,7 +11,9 @@ static cJSON *auth_bypass_run(const char *command){
   return reply(0,"fixture auth bypass response missing");
  }
  char *argv[]={(char*)path,(char*)command,NULL};int ok=run_cmd(path,argv,NULL,out,sizeof(out));
- cJSON*r=ok?cJSON_Parse(out):NULL;if(!cJSON_IsObject(r)){cJSON_Delete(r);return reply(0,"终端放行控制器未返回有效结果");}return r;
+ cJSON*r=ok?cJSON_Parse(out):NULL;if(!cJSON_IsObject(r)){cJSON_Delete(r);return reply(0,"终端放行控制器未返回有效结果");}
+ if(strcmp(command,"status")&&!*jstr(r,"message"))cJSON_AddStringToObject(r,"message",cJSON_IsTrue(jget(r,"ok"))?(!strcmp(command,"enable")?"终端放行已开启，守护已运行":"终端放行已关闭，后续由原厂管理认证"):"终端放行未确认，请刷新检查");
+ return r;
 }
 static cJSON *auth_bypass_action(const char *action,const cJSON *args){
  (void)args;
@@ -24,12 +26,21 @@ static void auth_bypass_sections(cJSON *root){
  cJSON *r=auth_bypass_run("status");
  int enabled=cJSON_IsTrue(jget(r,"enabled"));
  int guard=cJSON_IsTrue(jget(r,"guard_running"));
- const char *valid=jstr(r,"valid"),*sw=jstr(r,"switch");
- const char *label=!enabled?"已关闭 · 原厂按终端认证":guard?"已开启 · 本机放行所有终端":"已开启 · 守护未运行";
+ cJSON *valid_value=jget(r,"valid"),*switch_value=jget(r,"switch");
+ int gates_known=cJSON_IsNumber(valid_value)&&cJSON_IsNumber(switch_value);
+ int available=cJSON_IsTrue(jget(r,"ok"))&&cJSON_IsBool(jget(r,"enabled"))&&gates_known;
+ cJSON *d=jget(root,"data"),*state=cJSON_AddObjectToObject(d,"auth_bypass");
+ cJSON_AddBoolToObject(state,"available",available);
+ cJSON_AddBoolToObject(state,"enabled",enabled);
+ cJSON_AddBoolToObject(state,"guard_running",guard);
+ cJSON_AddBoolToObject(state,"drift",cJSON_IsTrue(jget(r,"drift")));
+ copy_value(state,"valid",r,"valid");copy_value(state,"switch",r,"switch");
+ char valid[32],sw[32];scalar_text(jget(r,"valid"),valid,sizeof(valid));scalar_text(jget(r,"switch"),sw,sizeof(sw));
+ const char *label=!available?"状态读取失败":!enabled?"已关闭 · 原厂按终端认证":!guard?"已开启 · 守护未运行":cJSON_IsTrue(jget(r,"drift"))?"已开启 · 等待门控复位":"已开启 · 终端默认放行";
  cJSON *s=adv_section(root,"auth-bypass","终端上网放行");
  cJSON *i=item(s,"auth.bypass.toggle","本机放行所有 Wi-Fi 终端","toggle",label,
-   enabled?"auth.bypass.disable":"auth.bypass.enable",1,
-   "关闭原厂在本机对未完成认证或认证过期终端的拦截与踢下线；不改动运营商侧上报与套餐。原厂关掉后在原厂首页「上网认证」对应终端仍可正常上网。");
+   enabled?"auth.bypass.disable":"auth.bypass.enable",available,
+   "开启后关闭本机对未认证或认证过期终端的拦截与踢下线；不改动运营商侧上报与套餐。关闭后由原厂管理认证，可能需要在原厂首页完成上网认证。");
  cJSON_ReplaceItemInObject(i,"confirm",cJSON_CreateBool(1));
  cJSON_AddBoolToObject(jget(i,"args"),"enabled",!enabled);
  char summary[256];snprintf(summary,sizeof(summary),

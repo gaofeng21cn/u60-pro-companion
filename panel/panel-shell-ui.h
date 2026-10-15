@@ -293,7 +293,7 @@ static const char *sh_net_notes[]={"名称、密码与无线设置","选网、AP
  * what the user actually sees first. */
 static const char *sh_settings_sections[]={"system","battery","usage","signal","sms","band","sim","diagnostics","esim","clients","auth-bypass"};
 static const char *sh_settings_titles[]={"电源与屏幕","电池与省电","套餐流量账本","信号与邻区","短信收件箱","频段与小区","SIM 卡状态","网络诊断","eSIM 配置文件","已连接设备","终端上网放行"};
-static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试","读取 eUICC 与切换套餐","放行未认证终端上网","查看并切换本机放行开关"};
+static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试","读取 eUICC 与切换套餐","查看 Wi-Fi 与 USB 接入设备","查看并切换本机放行开关"};
 /* Display order is independent of the stable SH_SECTION action indices. */
 static int sh_menu_index(struct app*a,int index){
  static const int settings_order[]={0,1,2,8,3,4,6,5,7,9,10,11};
@@ -312,6 +312,19 @@ static const char *sh_outlet(cJSON*d){
  if(!strcmp(verdict,"tailscale"))return "Tailscale";
  const char *profile=sh_str(d,"network_profile","");
  return !strcmp(profile,"clash")?"代理未核验":!strcmp(profile,"tailscale")?"Tailscale":!strcmp(profile,"direct")?"直连":"未确认";
+}
+static const char *sh_auth_bypass_label(cJSON*d){
+ cJSON*a=sh_get(d,"auth_bypass");
+ if(!cJSON_IsTrue(sh_get(a,"available")))return "放行状态未知";
+ if(!cJSON_IsTrue(sh_get(a,"enabled")))return "原厂认证";
+ if(cJSON_IsTrue(sh_get(a,"drift")))return "放行复位中";
+ return cJSON_IsTrue(sh_get(a,"guard_running"))?"终端默认放行":"放行未就绪";
+}
+static uint16_t sh_auth_bypass_color(cJSON*d){
+ cJSON*a=sh_get(d,"auth_bypass");
+ if(!cJSON_IsTrue(sh_get(a,"available"))||!cJSON_IsTrue(sh_get(a,"enabled")))return SH_MUTED;
+ if(cJSON_IsTrue(sh_get(a,"drift"))||!cJSON_IsTrue(sh_get(a,"guard_running")))return SH_WARN;
+ return SH_CYAN;
 }
 static void sh_clock_text(time_t now,char*out,size_t n){
  struct tm tm;if(localtime_r(&now,&tm)&&tm.tm_year>=120)strftime(out,n,"%H:%M",&tm);else snprintf(out,n,"--:--");
@@ -364,7 +377,8 @@ static void sh_statusbar(struct drm_buf*b,struct app*a,time_t now){
 static void sh_home(struct drm_buf*b,struct app*a){
  struct panel_shell*s=&a->shell;cJSON*d=sh_get(s->snapshot,"data"),*cl=sh_get(d,"clash");char tmp[160],down[40],up[40],down_unit[16],up_unit[16],today[40],quota[40],used[40];
  if(!strcmp(sh_str(d,"physical_iface",""),"u60sta"))snprintf(tmp,sizeof(tmp),"%s",sh_str(d,"wifi_status","Wi-Fi 上游中继"));else snprintf(tmp,sizeof(tmp),"%s · %s",sh_str(d,"operator","运营商未知"),sh_str(d,"network","网络未知"));sh_text(b,16,51,tmp,15,SH_CYAN,287);
- snprintf(tmp,sizeof(tmp),"出口 · %s",sh_outlet(d));sh_text(b,16,74,tmp,14,SH_MUTED,287);
+ snprintf(tmp,sizeof(tmp),"出口 · %s",sh_outlet(d));sh_text(b,16,74,tmp,14,SH_MUTED,172);
+ sh_text(b,196,74,sh_auth_bypass_label(d),14,sh_auth_bypass_color(d),108);
  sh_surface(b,12,96,308,167,13,sh_category_card(SH_NETWORK_COLOR));sh_rate(d,"download_bps",down,sizeof(down),down_unit,sizeof(down_unit));sh_rate(d,"upload_bps",up,sizeof(up),up_unit,sizeof(up_unit));
  sh_text(b,24,105,"↓ 下载",14,SH_MUTED,165);sh_text(b,216,105,"↑ 上传",14,SH_MUTED,80);
  sh_text(b,24,127,down,32,SH_TEXT,128);sh_text(b,152,140,down_unit,14,SH_MUTED,62);
@@ -374,7 +388,7 @@ static void sh_home(struct drm_buf*b,struct app*a){
  sh_text(b,24,184,"蜂窝流量",14,SH_MUTED,100);sh_text(b,170,184,warning?"估算用量预警 ›":"历史此前未知 ›",14,warning?SH_CYAN:SH_MUTED,126);
  snprintf(tmp,sizeof(tmp),"今日 %s",today);sh_text(b,24,206,tmp,17,SH_TEXT,138);
  if(usage_available){char cycle[40];sh_metric(usage,"used_bytes",cycle,sizeof(cycle),0);snprintf(tmp,sizeof(tmp),"周期 %s",cycle);}else snprintf(tmp,sizeof(tmp),"周期 —");sh_text(b,170,206,tmp,17,SH_TEXT,126);hit_add(a,12,174,308,230,SH_SECTION+24);
- sh_surface(b,12,237,308,326,12,sh_category_card(SH_SERVICE_COLOR));snprintf(tmp,sizeof(tmp),"已选节点 · %s",mode_label(sh_str(cl,"mode","")));sh_text(b,24,247,tmp,16,sh_category_ink(SH_SERVICE_COLOR),181);
+ sh_surface(b,12,237,308,326,12,sh_category_card(SH_SERVICE_COLOR));snprintf(tmp,sizeof(tmp),"代理策略 · %s",mode_label(sh_str(cl,"mode","")));sh_text(b,24,247,tmp,16,sh_category_ink(SH_SERVICE_COLOR),181);
  char connections[24];sh_value(sh_get(cl,"connections"),connections,sizeof(connections));snprintf(tmp,sizeof(tmp),"%s 连接",connections);sh_text(b,220,248,tmp,15,SH_MUTED,78);
  sh_text(b,24,272,sh_str(cl,"node","尚未选择节点"),17,SH_TEXT,268);
  sh_metric(cl,"quota_remaining",quota,sizeof(quota),0);snprintf(tmp,sizeof(tmp),"剩余 %s",quota);sh_text(b,24,302,tmp,15,SH_TEXT,139);

@@ -20,6 +20,7 @@ ROOT=${AUTH_BYPASS_ROOT:-/data/u60-panel/auth-bypass}
 INTENT=${AUTH_BYPASS_INTENT:-/data/u60-panel/auth-bypass-enabled}
 PIDFILE=${AUTH_BYPASS_PIDFILE:-/tmp/u60-auth-bypass.pid}
 LOCKDIR=${AUTH_BYPASS_LOCK:-/tmp/u60-auth-bypass.lock}
+INIT_SERVICE=${AUTH_BYPASS_INIT:-/etc/init.d/u60-auth-bypass}
 UCI=${UCI_CMD:-uci}
 IPT=${IPTABLES:-iptables}
 IP6T=${IP6TABLES:-ip6tables}
@@ -84,22 +85,32 @@ hold() {
 
 status_json() {
   valid=$(uci_get "$VALID_KEY"); switch=$(uci_get "$SWITCH_KEY")
+  case "$valid" in 0|1) ;; *) valid=null ;; esac
+  case "$switch" in 0|1) ;; *) switch=null ;; esac
   n=$("$IPT" -S second_auth_redirect_chain 2>/dev/null | grep -c '^-A ' || true)
   n6=$("$IP6T" -S second_auth_redirect_chain 2>/dev/null | grep -c '^-A ' || true)
   guard=false; [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null && guard=true
   enabled=false; [ -f "$INTENT" ] && enabled=true
   dr=false; drift && dr=true
   printf '{"ok":true,"enabled":%s,"guard_running":%s,"valid":%s,"switch":%s,"chain_rules":%s,"chain_rules6":%s,"drift":%s}\n' \
-    "$enabled" "$guard" "${valid:-unknown}" "${switch:-unknown}" "$n" "$n6" "$dr"
+    "$enabled" "$guard" "$valid" "$switch" "$n" "$n6" "$dr"
 }
 
 start_guard() {
-  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null; then return 0; fi
-  # Re-exec through the same interpreter so the guard also starts when the
-  # helper is invoked as `sh auth-bypass.sh` or is not yet executable.
-  sh "$0" watch >/dev/null 2>&1 &
+  # procd owns the watcher, independent of the UI request's process lifetime.
+  "$INIT_SERVICE" enable >/dev/null 2>&1 || return 1
+  "$INIT_SERVICE" start >/dev/null 2>&1 || return 1
+  for attempt in 1 2 3 4 5; do
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null; then return 0; fi
+    sleep 0.2
+  done
+  return 1
 }
 stop_guard() {
+  if [ -x "$INIT_SERVICE" ]; then
+    "$INIT_SERVICE" stop >/dev/null 2>&1 || true
+    "$INIT_SERVICE" disable >/dev/null 2>&1 || true
+  fi
   if [ -f "$PIDFILE" ]; then
     p=$(cat "$PIDFILE" 2>/dev/null || true)
     case "$p" in ''|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true ;; esac
@@ -119,7 +130,8 @@ watch_loop() {
     esac
   fi
   printf '%s\n' "$$" > "$PIDFILE"
-  trap 'rm -f "$PIDFILE"' EXIT HUP INT TERM
+  trap 'rm -f "$PIDFILE"' EXIT
+  trap 'exit 0' HUP INT TERM
   while [ -f "$INTENT" ]; do
     if drift; then mkdir -p "$ROOT"; hold; fi
     sleep "$WATCH_INTERVAL"
@@ -147,10 +159,15 @@ if [ "$action" = disable ]; then
   exit 0
 fi
 
+[ -x "$INIT_SERVICE" ] || { say '{"ok":false,"error":"service_unavailable","message":"放行服务未安装，未修改门控"}'; exit 0; }
 : > "$INTENT"
 if ! hold; then
   say '{"ok":false,"error":"hold_failed","detail":"gate not confirmed off"}'
   exit 1
 fi
-start_guard
-status_json
+start_guard || true
+state=$(status_json)
+case "$state" in
+  *'"guard_running":true'*) printf '%s\n' "$state"; exit 0 ;;
+  *) printf '%s\n' '{"ok":false,"error":"guard_not_running","message":"本机门控已写入，但守护未启动，请刷新重试"}'; exit 0 ;;
+esac

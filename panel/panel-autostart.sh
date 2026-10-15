@@ -26,7 +26,7 @@ sleep 1
 if [ "$UI_ONLY" = b31-ui-first ]; then
  if [ -f "$ROOT/usb-managed" ];then /etc/init.d/u60-usb-role start >/dev/null 2>&1 || true;fi
  if [ -f "$ROOT/relay-private/enabled" ];then "$ROOT/wifi-relay.sh" boot >/dev/null 2>&1 || true;fi
- if [ -f "$ROOT/auth-bypass-enabled" ];then "$ROOT/auth-bypass.sh" watch >/dev/null 2>&1 & fi
+	if [ -f "$ROOT/auth-bypass-enabled" ] && [ -x /etc/init.d/u60-auth-bypass ];then /etc/init.d/u60-auth-bypass start >/dev/null 2>&1 || true;fi
 	"$ROOT/panel-watch.sh" >/dev/null 2>&1 &
 	exec "$ROOT/panel-run.sh"
 fi
