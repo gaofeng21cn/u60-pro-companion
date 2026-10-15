@@ -53,7 +53,10 @@ def main():
  expected_identity=(ROOT/'TARGET-IDENTITY-SHA256').read_text().strip()
  if not re.fullmatch(r'[0-9]{15}',identity) or not re.fullmatch(r'[0-9a-f]{64}',expected_identity) or hashlib.sha256(b'u60-imei-v1:'+identity.encode()).hexdigest()!=expected_identity:
   raise SystemExit('Target identity does not match the prepared package')
- if a.action in ['install','check','upgrade-check','upgrade']:
+ # restore-boot also runs its script from the target package directory, so the
+ # reviewed copy must be uploaded first; otherwise a device would run whatever
+ # stale restore-boot.sh it already had (or none at all).
+ if a.action in ['install','check','upgrade-check','upgrade','restore-boot']:
   shell('mkdir -p /data/u60-packages\nchmod 700 /data/u60-packages\n[ ! -L '+remote+' ]\nmkdir -p '+remote+'\nchmod 700 '+remote)
   # Directory contents only; no workstation config, credential or Tailscale state is added.
   subprocess.run(adb+['push',str(ROOT)+'/.',remote+'/'],check=True,timeout=180)

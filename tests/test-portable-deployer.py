@@ -28,6 +28,15 @@ else:sys.exit(2)
   self.env=dict(os.environ,CALLS=str(self.r/'calls'),PUSHES=str(self.r/'pushes'))
  def tearDown(self):self.tmp.cleanup()
  def run_it(self,**env):return subprocess.run(['python3',str(self.pkg/'deploy-from-computer.py'),'--adb',str(self.adb),'check'],env=dict(self.env,**env),capture_output=True,text=True,timeout=10)
+ def run_action(self,action,**env):
+  return subprocess.run(['python3',str(self.pkg/'deploy-from-computer.py'),'--adb',str(self.adb),action],
+                        env=dict(self.env,**env),capture_output=True,text=True,timeout=10)
+ def test_restore_boot_uploads_the_reviewed_script_before_running_it(self):
+  # restore-boot runs its script from the target package directory; the device
+  # must receive this reviewed copy first instead of running a stale one.
+  r=self.run_action('restore-boot')
+  self.assertEqual(r.returncode,0,r.stderr)
+  self.assertTrue((self.r/'pushes').exists(),'restore-boot must upload the bundle first')
  def test_clean_bundle_targets_one_device_with_exec_out(self):
   r=self.run_it();self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.r/'pushes').exists())
  def test_b28_bundle_retains_support(self):
