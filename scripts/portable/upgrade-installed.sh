@@ -87,7 +87,7 @@ NCM_SOURCE="payload/data/u60-panel/usb-ncm-composition.sh"
 PLAN=$(cd payload/data && find . -type f | sed 's|^\./||' | sort | while IFS= read -r rel; do
  is_state "$rel" && continue
  if [ ! -e "/data/$rel" ]; then
-  [ "$rel" = u60-panel/u60-esim ] || [ "$rel" = u60-panel/lpac ] || [ "$rel" = u60-panel/esim-control.sh ] || [ "$rel" = u60-web/public/js/u60-web-esim.js ] || [ "$rel" = u60-web/public/js/jsQR.js ] || [ "$rel" = u60-web/public/js/jsQR-LICENSE.txt ] || [ "$rel" = u60-panel/usb-ncm-composition.sh ] || [ "$rel" = u60-panel/usb-ncm-trial.sh ] || [ "$rel" = u60-panel/usb-ecm-trial.sh ] || [ "$rel" = u60-panel/usb-macnet-owner.sh ] || [ "$rel" = u60-panel/usb-macnet-hook.sh ] || [ "$rel" = u60-panel/auth-bypass.sh ] || fail "Unexpected new file in package: $rel"
+  [ "$rel" = u60-panel/u60-esim ] || [ "$rel" = u60-panel/lpac ] || [ "$rel" = u60-panel/esim-control.sh ] || [ "$rel" = u60-panel/network-control.sh ] || [ "$rel" = u60-web/public/js/u60-web-esim.js ] || [ "$rel" = u60-web/public/js/jsQR.js ] || [ "$rel" = u60-web/public/js/jsQR-LICENSE.txt ] || [ "$rel" = u60-panel/usb-ncm-composition.sh ] || [ "$rel" = u60-panel/usb-ncm-trial.sh ] || [ "$rel" = u60-panel/usb-ecm-trial.sh ] || [ "$rel" = u60-panel/usb-macnet-owner.sh ] || [ "$rel" = u60-panel/usb-macnet-hook.sh ] || [ "$rel" = u60-panel/auth-bypass.sh ] || fail "Unexpected new file in package: $rel"
  fi
  printf '%s\n' "$rel"
 done)

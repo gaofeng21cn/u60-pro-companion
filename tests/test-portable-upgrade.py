@@ -42,7 +42,8 @@ class PortableUpgrade(unittest.TestCase):
         self.tools = self.root / 'tools'
         for p in (self.target, self.pkg, self.tools):
             p.mkdir()
-        for d in ['data', 'etc/init.d', 'etc/rc.d', 'sys/class/input/event0/device',
+        for d in ['data', 'data/u60-web/public/js', 'etc/init.d', 'etc/rc.d',
+                  'sys/class/input/event0/device',
                   'sys/class/input/event3/device', 'sys/class/power_supply/usb',
                   'sys/class/net', 'dev/dri', 'dev/net']:
             (self.target / d).mkdir(parents=True, exist_ok=True)
@@ -88,9 +89,18 @@ class PortableUpgrade(unittest.TestCase):
             self.put(payload / 'init' / name, '#!/bin/sh\ncase "$1" in start) exit 0;; restart) exit 0;;esac\n')
         # These files did not exist before the NCM candidate release. Their
         # absence is part of the rollback target, not an incomplete backup.
-        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh', 'usb-macnet-hook.sh', 'u60-esim', 'lpac', 'esim-control.sh']:
+        # Every file that is new relative to the oldest supported install must
+        # be listed in the upgrade whitelist, or the upgrade refuses to run.
+        # Keep this list aligned with the currently-shipped new files.
+        for name in ['usb-ncm-composition.sh', 'usb-ncm-trial.sh', 'usb-macnet-owner.sh',
+                     'usb-macnet-hook.sh', 'u60-esim', 'lpac', 'esim-control.sh',
+                     'network-control.sh', 'auth-bypass.sh']:
             self.put(payload / 'data/u60-panel' / name, '#!/bin/sh\nexit 1\n')
         self.put(payload / 'init/u60-ncm-trial', '#!/bin/sh\nexit 1\n')
+        self.put(payload / 'init/u60-auth-bypass', '#!/bin/sh\nexit 1\n')
+        for rel in ['data/u60-web/public/js/u60-web-esim.js', 'data/u60-web/public/js/jsQR.js',
+                    'data/u60-web/public/js/jsQR-LICENSE.txt']:
+            self.put(payload / rel, '// new asset\n')
         # Installed device: same programs, plus the state and the first-install backup.
         for rel, body in self.programs.items():
             self.put(self.target / rel, body)
