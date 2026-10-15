@@ -299,6 +299,16 @@ static int sh_menu_index(struct app*a,int index){
  static const int settings_order[]={0,1,2,8,3,4,6,5,7,9,10,11};
  return a->shell.tab==4&&index>=0&&index<12?settings_order[index]:index;
 }
+/* The left menu and the detail header must call a page the same thing. Prefer
+ * the screen's own short menu name for the pages it owns; fall back to the
+ * backend title (web/Clash/Tailscale pages) when there is no screen name. */
+static const char *sh_section_title(struct app*a,const char *id,cJSON *sec){
+ for(size_t n=0;n<sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0]);n++)
+  if(!strcmp(sh_settings_sections[n],id))return sh_settings_titles[n];
+ for(size_t n=0;n<sizeof(sh_net_sections)/sizeof(sh_net_sections[0]);n++)
+  if(!strcmp(sh_net_sections[n],id))return sh_net_titles[n];
+ return sh_str(sec,"title",id);
+}
 /* The asynchronous snapshot owns service state, while the clock is local.
  * Neither may fall back to fields from the retired synchronous UI. */
 static const char *sh_outlet(cJSON*d){
@@ -385,9 +395,13 @@ static void sh_home(struct drm_buf*b,struct app*a){
  sh_text(b,216,126,up,21,SH_TEXT,80);sh_text(b,216,149,up_unit,14,SH_MUTED,80);
  sh_metric(d,"today_bytes",today,sizeof(today),0);sh_surface(b,12,174,308,230,11,sh_category_card(SH_DEVICE_COLOR));
  cJSON*usage=sh_get(d,"usage");int usage_available=cJSON_IsTrue(sh_get(usage,"available"));const char*warning_state=sh_str(usage,"warning","");int warning=!strcmp(warning_state,"threshold")||!strcmp(warning_state,"exceeded");
- sh_text(b,24,184,"蜂窝流量",14,SH_MUTED,100);sh_text(b,170,184,warning?"估算用量预警 ›":"历史此前未知 ›",14,warning?SH_CYAN:SH_MUTED,126);
+ /* One label and one meaning per row: today on the left, this cycle on the
+  * right. "未知" states the reason instead of implying a clickable history. */
+ sh_text(b,24,184,"蜂窝流量",14,SH_MUTED,100);sh_text(b,170,184,warning?"用量预警":"本周期用量",14,warning?SH_CYAN:SH_MUTED,126);
  snprintf(tmp,sizeof(tmp),"今日 %s",today);sh_text(b,24,206,tmp,17,SH_TEXT,138);
- if(usage_available){char cycle[40];sh_metric(usage,"used_bytes",cycle,sizeof(cycle),0);snprintf(tmp,sizeof(tmp),"周期 %s",cycle);}else snprintf(tmp,sizeof(tmp),"周期 —");sh_text(b,170,206,tmp,17,SH_TEXT,126);hit_add(a,12,174,308,230,SH_SECTION+24);
+ if(usage_available){char cycle[40];sh_metric(usage,"used_bytes",cycle,sizeof(cycle),0);snprintf(tmp,sizeof(tmp),"周期 %s",cycle);}
+ else snprintf(tmp,sizeof(tmp),cJSON_IsTrue(sh_get(usage,"stored_ledger_exists"))?"周期 存档保留":"周期 未知");
+ sh_text(b,170,206,tmp,17,SH_TEXT,126);hit_add(a,12,174,308,230,SH_SECTION+24);
  sh_surface(b,12,237,308,326,12,sh_category_card(SH_SERVICE_COLOR));snprintf(tmp,sizeof(tmp),"代理策略 · %s",mode_label(sh_str(cl,"mode","")));sh_text(b,24,247,tmp,16,sh_category_ink(SH_SERVICE_COLOR),181);
  char connections[24];sh_value(sh_get(cl,"connections"),connections,sizeof(connections));snprintf(tmp,sizeof(tmp),"%s 连接",connections);sh_text(b,220,248,tmp,15,SH_MUTED,78);
  sh_text(b,24,272,sh_str(cl,"node","尚未选择节点"),17,SH_TEXT,268);
@@ -526,9 +540,19 @@ static void shell_render(struct drm_buf*b,struct app*a){
  s->scroll_offset=NULL;draw_clip_top=0;draw_clip_bottom=H;
  if(s->tab<0||s->tab>4)s->tab=0;sh_background(b,0,0,320,480);hit_reset(a);
  if(!s->subpage&&(s->tab==2||s->tab==3))sh_open_section(a,s->tab==2?"clash":"tailscale");
- const char*title=s->subpage?sh_str(sh_section(a,s->section),"title",s->section):titles[s->tab];
+ const char*title=s->subpage?sh_section_title(a,s->section,sh_section(a,s->section)):titles[s->tab];
  int back=s->subpage;
- sh_text(b,16,13,back?"‹":"",21,SH_CYAN,20);sh_text(b,back?48:16,14,title,19,SH_TEXT,back?90:122);if(back)hit_add(a,0,0,44,44,SH_BACK);
+ sh_text(b,16,13,back?"‹":"",21,SH_CYAN,20);
+ /* The status clock starts at x=144, so a page title may use 48..138 when the
+  * back chevron is shown. Chinese titles are 4-6 glyphs wide; 19px overflows
+  * past 90 and got clipped to "路由与…". Step the size down until the whole
+  * title fits, and only then fall back to an ellipsis. */
+ if(back){
+  const int title_x=48,title_max=92;int size=19;
+  while(size>14&&text_width(title,size)>title_max)size-=1;
+  sh_text(b,title_x,14+(19-size)/3,title,size,SH_TEXT,title_max);
+ }else sh_text(b,16,14,title,19,SH_TEXT,122);
+ if(back)hit_add(a,0,0,44,44,SH_BACK);
  sh_statusbar(b,a,time(NULL));
  if(s->tab==0)sh_home(b,a);else if(s->subpage)sh_detail(b,a);else if(s->tab==1||s->tab==4)sh_section_list(b,a);
  sh_navigation(b,a);

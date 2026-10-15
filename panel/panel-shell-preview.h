@@ -208,6 +208,19 @@ static void shell_preview_schema(struct drm_buf*b,const char*dir){
 }
 static void shell_preview_root_navigation(struct drm_buf*b){
  struct app a;shell_preview_fixture(&a);
+ /* Every page title must fit the 48..140 header slot while the back chevron is
+  * shown. A hard clip at 90px used to truncate 4-6 glyph Chinese titles to
+  * "XX与…"; the header now steps the font down, so all real titles fit. */
+ for(size_t n=0;n<sizeof(sh_settings_titles)/sizeof(sh_settings_titles[0]);n++){
+  const char *t=sh_settings_titles[n];int size=19;
+  while(size>14&&text_width(t,size)>92)size--;
+  assert(text_width(t,size)<=92);
+ }
+ for(size_t n=0;n<sizeof(sh_net_titles)/sizeof(sh_net_titles[0]);n++){
+  const char *t=sh_net_titles[n];int size=19;
+  while(size>14&&text_width(t,size)>92)size--;
+  assert(text_width(t,size)<=92);
+ }
  for(int tab=2;tab<=3;tab++){
   a.shell.tab=tab;sh_open_section(&a,tab==2?"clash":"tailscale");shell_render(b,&a);
   int back=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_BACK){assert(a.hits[h].x0==0&&a.hits[h].x1==44&&a.hits[h].y0==0&&a.hits[h].y1==44);back++;}assert(back==1);

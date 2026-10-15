@@ -508,7 +508,9 @@ static void control_clash_sections(cJSON *root) {
  /* Serving state and interception state are separate facts on this screen. */
  cc_item(items,"coverage","代理覆盖",verdict_text,"info",NULL);
  i=cc_item(items,"diagnose","代理覆盖自检","核对转发规则与未代理范围","action","clash.diagnose");cJSON_AddBoolToObject(i,"confirm",0);
- cc_item(items,"scope","代理范围","UDP 与 IPv6 不代理；UDP 443 被拒绝","info",NULL);
+ /* One-line summary; the full detail lives in the coverage self-check report.
+  * "不代理" alone used to wrap onto a second line and push the row layout. */
+ cc_item(items,"scope","未代理","IPv6、UDP 443 已拒绝","info",NULL);
  /* One place that states what has actually been verified on this device. */
  i=cc_item(items,"about","版本与验证范围","查看已安装版本","action","clash.about");cJSON_AddBoolToObject(i,"confirm",0);
  /* Operation history is a report, not a control: it never re-runs anything. */
