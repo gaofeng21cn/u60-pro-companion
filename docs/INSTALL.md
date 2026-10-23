@@ -64,7 +64,7 @@ python3 deploy-from-computer.py upgrade-check
 python3 deploy-from-computer.py upgrade
 ```
 
-`upgrade-check` 会把经过校验的安装材料上传到 `/data/u60-packages/`，随后检查固件、设备身份、已有安装记录、当前版本对应的首次安装备份或上一轮升级备份，以及可用空间；它不替换已安装程序、不重启服务，也不构成升级授权。`upgrade` 只替换程序与网页资源，逐个文件先备份哈希再替换、替换后逐字节核对，然后分别重启网页和屏幕并回读；代理配置、订阅、节点收藏与最近使用、Tailscale 身份和各项本机选择都不改动。任何一步失败会自动恢复上一版本程序，备份保留在 `/data/u60-upgrade-backups/<release>`。
+`upgrade-check` 会把经过校验的安装材料上传到 `/data/u60-packages/`，上传前自动清理同目录中已通过严格命名和 `RELEASE-ID` 校验的旧上传包，只保留当前操作包；升级回退备份位于独立的 `/data/u60-upgrade-backups/`，不受这项清理影响。随后检查固件、设备身份、已有安装记录、当前版本对应的首次安装备份或上一轮升级备份，以及可用空间；它不替换已安装程序、不重启服务，也不构成升级授权。`upgrade` 只替换程序与网页资源，逐个文件先备份哈希再替换、替换后逐字节核对，然后分别重启网页和屏幕并回读；代理配置、订阅、节点收藏与最近使用、Tailscale 身份和各项本机选择都不改动。任何一步失败会自动恢复上一版本程序，备份保留在 `/data/u60-upgrade-backups/<release>`。
 
 B31 开机后 USB 需要等待原厂 ConfigFS gadget 完成重新枚举；ADB 在这段时间暂时消失属于预期现象。首装不启用 Mac 模式；用户开启后由原厂 USB owner 协调恢复 ECM＋ADB。启动钩子会延迟检查网页服务并在失败时有限重试；请使用正式 Mac USB 联网开关，不要手动调用通用组合脚本或向 `/sys/class/android_usb` 写值。
 

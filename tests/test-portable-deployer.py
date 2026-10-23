@@ -19,6 +19,7 @@ elif 'push' in args:
  with open(os.environ['PUSHES'],'a') as f:f.write('push\\n')
 elif 'exec-out' in args:
  script=args[-1]
+ with open(os.environ['CALLS'],'a') as f:f.write('SCRIPT:'+script+'\\n')
  if 'get_zwrt_common_info' in script:print(os.environ.get('FW','BD_CNMU5250V1.0.0B31')+'\\n__U60_RC__=0')
  elif 'device_info' in script:print(os.environ.get('IMEI','123456789012345')+'\\n__U60_RC__=0')
  elif os.environ.get('FAIL_RC'):print('failed but adb reports zero\\n__U60_RC__=1')
@@ -37,6 +38,13 @@ else:sys.exit(2)
   r=self.run_action('restore-boot')
   self.assertEqual(r.returncode,0,r.stderr)
   self.assertTrue((self.r/'pushes').exists(),'restore-boot must upload the bundle first')
+ def test_old_upload_cleanup_is_strict_and_keeps_current_package(self):
+  r=self.run_action('check');self.assertEqual(r.returncode,0,r.stderr)
+  scripts=(self.r/'calls').read_text()
+  self.assertIn('/data/u60-packages/u60-pro-B28-* /data/u60-packages/u60-pro-B31-*',scripts)
+  self.assertIn('marker="$old/RELEASE-ID"',scripts)
+  self.assertIn('rm -rf "$old"',scripts)
+  self.assertIn('[ "$old" = "/data/u60-packages/u60-pro-B31-20260921-140827" ] && continue',scripts)
  def test_clean_bundle_targets_one_device_with_exec_out(self):
   r=self.run_it();self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.r/'pushes').exists())
  def test_b28_bundle_retains_support(self):

@@ -57,7 +57,31 @@ def main():
  # reviewed copy must be uploaded first; otherwise a device would run whatever
  # stale restore-boot.sh it already had (or none at all).
  if a.action in ['install','check','upgrade-check','upgrade','restore-boot']:
-  shell('mkdir -p /data/u60-packages\nchmod 700 /data/u60-packages\n[ ! -L '+remote+' ]\nmkdir -p '+remote+'\nchmod 700 '+remote)
+  # Package uploads are disposable staging material. Keep only the package
+  # used now; verified rollback copies live separately under
+  # /data/u60-upgrade-backups. Validate each candidate's own release marker
+  # before removing it, and never follow symlinks or touch other data.
+  cleanup='''
+for old in /data/u60-packages/u60-pro-B28-* /data/u60-packages/u60-pro-B31-*; do
+ [ -d "$old" ] && [ ! -L "$old" ] || continue
+ marker="$old/RELEASE-ID"
+ [ -f "$marker" ] || continue
+ name=${old##*/}
+ saved=$(cat "$marker" 2>/dev/null || true)
+ case "$saved" in
+  u60-pro-B28-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]|u60-pro-B31-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) [ "$saved" = "$name" ] || continue;;
+  *) continue;;
+ esac
+ [ "$old" = "'''+remote+'''" ] && continue
+ rm -rf "$old"
+done
+mkdir -p /data/u60-packages
+chmod 700 /data/u60-packages
+[ ! -L '''+remote+''' ]
+mkdir -p '''+remote+'''
+chmod 700 '''+remote+'''
+'''
+  shell(cleanup)
   # Directory contents only; no workstation config, credential or Tailscale state is added.
   subprocess.run(adb+['push',str(ROOT)+'/.',remote+'/'],check=True,timeout=180)
  command=('sh ./restore-boot.sh' if a.action=='restore-boot' else
