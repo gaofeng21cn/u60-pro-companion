@@ -23,7 +23,7 @@ macOS/Linux 使用终端；Windows 可用 Python 3 与 `adb.exe`，Windows 完�
 
 ### 从本仓库源码构建
 
-可下载本仓库 [v0.1.16-experimental 安装包](https://github.com/gaofeng21cn/u60-pro-enhanced/releases/tag/v0.1.16-experimental)，下载用户不需要编译器。当前主线下一预览包为 `v0.2.0-companion-preview`，尚未作为公开 Release 发布。以下是开发者构建方式。构建依赖 Zig 0.14.1、Go、Python 3、Rust 1.87+ 和 Git，主机测试还需 C 编译器和 Node.js。**请显式使用 Zig 0.14.1**：0.16 会构建失败。
+可下载本仓库 [v0.1.16-experimental 安装包](https://github.com/gaofeng21cn/u60-pro-companion/releases/tag/v0.1.16-experimental)，下载用户不需要编译器。当前主线下一预览包为 `v0.2.0-companion-preview`，尚未作为公开 Release 发布。以下是开发者构建方式。构建依赖 Zig 0.14.1、Go、Python 3、Rust 1.87+ 和 Git，主机测试还需 C 编译器和 Node.js。**请显式使用 Zig 0.14.1**：0.16 会构建失败。
 
 ```sh
 rustup target add aarch64-unknown-linux-musl
