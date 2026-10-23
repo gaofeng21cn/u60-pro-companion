@@ -723,6 +723,24 @@ static void fill_circle(struct drm_buf *b, int cx, int cy, int rad, uint16_t c)
 static stbtt_fontinfo g_font;
 static unsigned char *g_font_data;
 static int g_font_ok;
+/* Cache alpha masks, not coloured pixels: the same glyph remains correct on
+ * every palette and pressed surface. Direct mapping bounds both lookup work
+ * and memory (512 masks of at most 4096 bytes). */
+#define GLYPH_CACHE_SIZE 512
+struct panel_glyph {uint32_t cp;float px;int ready,w,h,x,y,left,advance;unsigned char *mask;};
+static struct panel_glyph g_glyphs[GLYPH_CACHE_SIZE];
+static struct panel_glyph *font_glyph(uint32_t cp,float px){
+ unsigned key=(cp*2654435761u)^((unsigned)(px*64)*2246822519u);
+ struct panel_glyph*g=&g_glyphs[key%GLYPH_CACHE_SIZE];
+ if(g->ready&&g->cp==cp&&g->px==px)return g;
+ stbtt_FreeBitmap(g->mask,NULL);memset(g,0,sizeof(*g));g->cp=cp;g->px=px;
+ float scale=stbtt_ScaleForPixelHeight(&g_font,px);int advance,left;
+ stbtt_GetCodepointHMetrics(&g_font,(int)cp,&advance,&left);
+ g->advance=(int)(advance*scale);g->left=(int)(left*scale);
+ g->mask=stbtt_GetCodepointBitmap(&g_font,scale,scale,(int)cp,&g->w,&g->h,&g->x,&g->y);
+ if(g->w<0||g->h<0||(size_t)g->w*g->h>4096){stbtt_FreeBitmap(g->mask,NULL);g->mask=NULL;}
+ g->ready=1;return g;
+}
 static int font_load(void)
 {
 	const char *path = getenv("U60_FONT");
@@ -805,18 +823,12 @@ static void draw_text(struct drm_buf *b, int x, int y, const char *s, float px, 
 		baseline = y + (int)(as * scale);
 	}
 	while (*p) {
-		int ax, lsb, x0, y0, gw, gh;
-		unsigned char *bmp;
 		uint32_t cp = utf8_next(&p);
 		if (!cp)
 			break;
-		stbtt_GetCodepointHMetrics(&g_font, (int)cp, &ax, &lsb);
-		bmp = stbtt_GetCodepointBitmap(&g_font, scale, scale, (int)cp, &gw, &gh, &x0, &y0);
-		if (bmp) {
-			blend_glyph(b, x + (int)(lsb * scale) + x0, baseline + y0, gw, gh, bmp, fg);
-			stbtt_FreeBitmap(bmp, NULL);
-		}
-		x += (int)(ax * scale);
+		struct panel_glyph *g=font_glyph(cp,px);
+		if(g->mask)blend_glyph(b,x+g->left+g->x,baseline+g->y,g->w,g->h,g->mask,fg);
+		x += g->advance;
 		if (x > W)
 			break;
 	}
@@ -1149,6 +1161,8 @@ struct app {
 	int google_ms, checking_google, bl;
 	int quota_ok;
 	double quota_remain_gb, quota_total_gb;
+	double rate_history[32];
+	int rate_history_count;
 	time_t quota_expire, quota_fetched;
 	struct group groups[MAX_GROUPS];
 	int ngroups;
@@ -1973,9 +1987,65 @@ static void draw_toast(struct drm_buf *b, struct app *a)
 	draw_text_clip(b, x0 + 14, y0 + 8, a->toast, 13, COL_TEXT, tw + 4);
 }
 
+/* Navigation reuses two finished logical frames. Animation only copies pixels;
+ * it does not rerasterize text, wait in a loop, or start work while idle. */
+#define PANEL_MOTION_MS 160
+struct panel_view {int tab,subpage,item_page,menu_page,locked,overlay;char section[32];};
+struct panel_motion {
+ uint16_t from[W*H],to[W*H];struct panel_view view;
+ int ready,active,axis,direction;long began,next;
+};
+static struct panel_motion panel_motion;
+static struct panel_view panel_view_read(struct app*a){
+ struct panel_shell*s=&a->shell;
+ struct panel_view v={.tab=s->tab,.subpage=s->subpage,.item_page=s->item_page,.menu_page=s->menu_page,.locked=s->locked,.overlay=s->modal||s->editor||s->power_open||s->busy};
+ snprintf(v.section,sizeof(v.section),"%s",s->section);return v;
+}
+static int panel_motion_route(struct panel_view before,struct panel_view after,int*axis,int*direction){
+ if(before.overlay||after.overlay||before.locked||after.locked)return 0;
+ *axis=0;
+ if(before.tab!=after.tab){*direction=after.tab>before.tab?1:-1;return 1;}
+ if(before.subpage!=after.subpage){*direction=after.subpage?1:-1;return 1;}
+ if(strcmp(before.section,after.section)){*direction=1;return 1;}
+ int old=after.subpage?before.item_page:before.menu_page,new=after.subpage?after.item_page:after.menu_page;
+ if(old!=new){*axis=1;*direction=new>old?1:-1;return 1;}
+ return 0;
+}
+static void panel_motion_compose(struct panel_motion*m,struct drm_buf*b,long elapsed){
+ if(elapsed<0)elapsed=0;if(elapsed>PANEL_MOTION_MS)elapsed=PANEL_MOTION_MS;
+ float t=(float)elapsed/PANEL_MOTION_MS,u=1-t;
+ int top=44,bottom=432,span=m->axis?bottom-top:W,shift=(int)((1-u*u*u)*span+.5f);
+ for(int y=0;y<H;y++){
+  uint16_t*row=(uint16_t*)((uint8_t*)b->map+y*b->pitch);
+  if(y<top||y>=bottom||elapsed==PANEL_MOTION_MS){memcpy(row,m->to+y*W,W*2);continue;}
+  if(m->axis){
+   int sy=y+m->direction*shift;const uint16_t*source=m->from;
+   if(sy<top){sy+=span;source=m->to;}else if(sy>=bottom){sy-=span;source=m->to;}
+   memcpy(row,source+sy*W,W*2);
+  }else if(m->direction>0){
+   memcpy(row,m->from+y*W+shift,(W-shift)*2);
+   memcpy(row+W-shift,m->to+y*W,shift*2);
+  }else{
+   memcpy(row,m->to+y*W+W-shift,shift*2);
+   memcpy(row+shift,m->from+y*W,(W-shift)*2);
+  }
+ }
+}
+static int render_motion(struct qpic_ctx*d){
+ long started=now_ms(),elapsed=started-panel_motion.began;
+ struct drm_buf*b=draw_buf(d);panel_motion_compose(&panel_motion,b,elapsed);
+ panel_motion.active=elapsed<PANEL_MOTION_MS;panel_motion.next=started+16;
+ return drm_flip(d,now_ms()-started);
+}
 static int render(struct qpic_ctx *d, struct app *a) {
  long draw_started=now_ms();
  struct drm_buf *b=draw_buf(d);hit_reset(a);shell_render(b,a);
+ struct panel_view view=panel_view_read(a);int axis=0,direction=0;
+ int animate=sh_new_theme()&&panel_motion.ready&&!a->shell.drag_active&&panel_motion_route(panel_motion.view,view,&axis,&direction);
+ if(animate)memcpy(panel_motion.from,panel_motion.to,sizeof(panel_motion.from));
+ for(int y=0;y<H;y++)memcpy(panel_motion.to+y*W,(uint8_t*)b->map+y*b->pitch,W*2);
+ panel_motion.view=view;panel_motion.ready=1;panel_motion.active=animate;
+ if(animate){panel_motion.axis=axis;panel_motion.direction=direction;panel_motion.began=now_ms();panel_motion.next=panel_motion.began+16;panel_motion_compose(&panel_motion,b,0);}
  int status=drm_flip(d,now_ms()-draw_started);if(status<0)logline("flip failed");return status;
 }
 
@@ -2142,10 +2212,13 @@ static int ui_main(void) {
   if(g_wake){g_wake=0;last_input=now_ms();if(app.blanked)screen_unblank(&app);else screen_blank(&app);need=1;}
   if(g_power){g_power=0;last_input=now_ms();screen_unblank(&app);app.shell.power_open=1;logline("power menu opened");need=1;}
   if(was_blanked&&!app.blanked)next_snapshot=0;
+  if(app.blanked)panel_motion.active=0;
   /* Input and helper completion wake the loop immediately. An idle screen
    * only needs the next telemetry tick, rather than 33 wakeups per second. */
   long sample_wait=1000-(now_ms()-last_sample);if(sample_wait<0)sample_wait=0;
-  int wait_ms=touch.down||screen_notice.pid?30:app.blanked?1000:(int)sample_wait;
+  int wait_ms=touch.down||screen_notice.pid?30:app.blanked?1000:panel_motion.active?16:(int)sample_wait;
+  if(panel_motion.active){long due=panel_motion.next-now_ms();if(due<0)due=0;if(wait_ms>due)wait_ms=(int)due;}
+  if(need)wait_ms=0;
   struct pollfd events[2]={{touch.fd,POLLIN,0},{pw.pid&&!touch.down?pw.fd:-1,POLLIN,0}};
   poll(events,2,wait_ms);struct pollfd p={touch.fd,POLLIN,0};
   /* Consume queued motion frames before drawing, avoiding a growing backlog
@@ -2156,19 +2229,20 @@ static int ui_main(void) {
    int blocked=was_blanked||app.blanked||touch_gate.blocked;
    panel_touch_accept(&touch_gate,was_blanked||app.blanked,touch.down,touch.tap);
    int x,y;touch_map(&touch,&x,&y);
-   if(blocked){app.shell.drag_active=0;}else{if(touch.down||touch.tap)last_input=now_ms();if(shell_pointer(&app,x,y,touch.down,touch.tap))need=1;}
+   if(blocked){app.shell.drag_active=0;}else{if(touch.down||touch.tap){last_input=now_ms();if(panel_motion.active){panel_motion.active=0;need=1;}}if(shell_pointer(&app,x,y,touch.down,touch.tap))need=1;}
    if(!touch.down||poll(&p,1,0)<=0)break;
   }
   touch.tap=0;
   int lcd_result=panel_lcd_notice_poll(&screen_notice,now_ms());
   if(lcd_result>0)logline("stock LCD notification applied: %s",screen_notice.applied?"on":"off");
   else if(lcd_result<0){logline("stock LCD notification failed; retry latest state");snprintf(app.shell.status,sizeof(app.shell.status),"屏幕唤醒通知未确认，正在重试");app.shell.status_until=now_ms()+4000;need=1;}
-  if(!touch.down&&worker_poll(&app))need=1;
+  if(!touch.down&&!panel_motion.active&&worker_poll(&app))need=1;
   if(!snapshot_logged&&cJSON_GetArraySize(cJSON_GetObjectItem(app.shell.snapshot,"sections"))>0){snapshot_logged=1;logline("switch event=first-snapshot mono_ms=%ld startup_ms=%ld",now_ms(),now_ms()-startup);}
-  long t=now_ms();if(!app.blanked&&t-last_sample>=1000){sample_local(&app);last_sample=t;need=1;}
+  long t=now_ms();if(!app.blanked&&!touch.down&&!panel_motion.active&&t-last_sample>=1000){sample_local(&app);last_sample=t;need=1;}
   if(t-last_hb>=5000){hb();last_hb=t;}
   if(!app.blanked&&!app.shell.power_open&&app.blank_sec>0&&t-last_input>=app.blank_sec*1000L){logline("automatic screen blank after %d seconds",app.blank_sec);screen_blank(&app);need=1;}
   if(need&&!app.blanked){render(&drm,&app);need=0;}
+  else if(panel_motion.active&&!app.blanked&&now_ms()>=panel_motion.next)render_motion(&drm);
  }
 out:
  release_started=now_ms();

@@ -16,6 +16,7 @@ struct panel_shell {
  char status[160]; /* optional root operation result/status */
  char section[32];
  int modal, editor, field, key_page, shift, reveal, power_open;
+ int locked; /* Beacon candidate's lock screen is UI-only; it is not device security. */
  cJSON *draft; /* owned deep copy; never replaced by background refresh */
  cJSON *pending_args;
  int nfields;

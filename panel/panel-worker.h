@@ -98,7 +98,10 @@ static void sample_local(struct app*a){
  f=fopen("/proc/meminfo","r");if(f){char line[160];unsigned long total=0,avail=0;while(fgets(line,sizeof(line),f)){sscanf(line,"MemTotal: %lu",&total);sscanf(line,"MemAvailable: %lu",&avail);}if(total)live_num(d,"memory_percent",100.0*(total-avail)/total);fclose(f);}
  char iface[64]="";f=fopen("/proc/net/route","r");if(f){char line[256];unsigned best=~0u;fgets(line,sizeof(line),f);while(fgets(line,sizeof(line),f)){char name[64];unsigned dest,gate,flags,metric;if(sscanf(line,"%63s %x %x %x %*u %*u %u",name,&dest,&gate,&flags,&metric)==5&&!dest&&(flags&1)&&metric<best&&strcmp(name,"tailscale0")&&strcmp(name,"lo")){strcpy(iface,name);best=metric;}}fclose(f);}
  if(*iface){unsigned long long rx=0,tx=0;char path[160];snprintf(path,sizeof(path),"/sys/class/net/%s/statistics/rx_bytes",iface);f=fopen(path,"r");int valid=f&&fscanf(f,"%llu",&rx)==1;if(f)fclose(f);snprintf(path,sizeof(path),"/sys/class/net/%s/statistics/tx_bytes",iface);f=fopen(path,"r");valid=valid&&f&&fscanf(f,"%llu",&tx)==1;if(f)fclose(f);
-  live_str(d,"physical_iface",iface);if(valid&&prev_ms&&n>prev_ms&&!strcmp(iface,old_iface)&&rx>=last_rx&&tx>=last_tx){live_num(d,"download_bps",(double)(rx-last_rx)*1000/(n-prev_ms));live_num(d,"upload_bps",(double)(tx-last_tx)*1000/(n-prev_ms));}else{cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");}last_rx=rx;last_tx=tx;snprintf(old_iface,sizeof(old_iface),"%s",iface);prev_ms=n;
+  live_str(d,"physical_iface",iface);if(valid&&prev_ms&&n>prev_ms&&!strcmp(iface,old_iface)&&rx>=last_rx&&tx>=last_tx){double rate=(double)(rx-last_rx)*1000/(n-prev_ms);live_num(d,"download_bps",rate);live_num(d,"upload_bps",(double)(tx-last_tx)*1000/(n-prev_ms));
+   if(a->rate_history_count<32)a->rate_history[a->rate_history_count++]=rate;
+   else {memmove(a->rate_history,a->rate_history+1,sizeof(a->rate_history)-sizeof(a->rate_history[0]));a->rate_history[31]=rate;}
+  }else{cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");}last_rx=rx;last_tx=tx;snprintf(old_iface,sizeof(old_iface),"%s",iface);prev_ms=n;
  }
  /* Clock is rendered from local time, independent of snapshot replacement. */
 }

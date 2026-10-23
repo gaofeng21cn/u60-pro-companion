@@ -1,0 +1,592 @@
+diff --git a/panel/panel-shell-model.h b/panel/panel-shell-model.h
+index b15f56a..ae8db16 100644
+--- a/panel/panel-shell-model.h
++++ b/panel/panel-shell-model.h
+@@ -16,6 +16,7 @@ struct panel_shell {
+  char status[160]; /* optional root operation result/status */
+  char section[32];
+  int modal, editor, field, key_page, shift, reveal, power_open;
++ int locked; /* Beacon candidate's lock screen is UI-only; it is not device security. */
+  cJSON *draft; /* owned deep copy; never replaced by background refresh */
+  cJSON *pending_args;
+  int nfields;
+diff --git a/panel/panel-shell-preview.h b/panel/panel-shell-preview.h
+index b962777..f914c99 100644
+--- a/panel/panel-shell-preview.h
++++ b/panel/panel-shell-preview.h
+@@ -7,9 +7,12 @@ static void shell_preview_fixture(struct app*a){
+  cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"cell\",\"title\":\"蜂窝网络\",\"items\":[{\"id\":\"signal\",\"label\":\"信号格数\",\"type\":\"info\",\"value\":\"5\"}]}"));
+  cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"network-control\",\"title\":\"终端网络\",\"items\":[{\"id\":\"network-status\",\"label\":\"网络能力\",\"type\":\"info\",\"value\":\"网页查看状态与启停\"},{\"id\":\"network-clients\",\"label\":\"连接设备\",\"type\":\"info\",\"value\":\"网页按 MAC 管理\"}]}"));
+  cJSON*d=sh_get(a->shell.snapshot,"data");cJSON_AddNumberToObject(d,"cpu_percent",12.123456);cJSON_AddNumberToObject(d,"memory_percent",48.345678);cJSON_AddStringToObject(d,"network_profile","clash");cJSON_AddNumberToObject(d,"uptime_seconds",13320);cJSON_AddStringToObject(d,"clock_text","14:32");cJSON_AddStringToObject(d,"signal","-83 dBm");cJSON_AddStringToObject(d,"band","n78");cJSON_AddStringToObject(d,"physical_iface","蜂窝");cJSON_AddItemToObject(d,"clash",cJSON_Parse("{\"online\":true,\"mode\":\"rule\",\"node\":\"香港 · 优选 01\",\"upload\":127534254,\"download\":2132353321,\"quota_remaining\":180818123161,\"connections\":18}"));
++ cJSON_ReplaceItemInObject(d,"band",cJSON_CreateString("n78 · 20 MHz"));cJSON_AddStringToObject(d,"signal_detail","-94 dBm · SINR 23");
++ cJSON*usage=cJSON_AddObjectToObject(d,"usage");cJSON_AddBoolToObject(usage,"available",1);cJSON_AddBoolToObject(usage,"persisted",1);cJSON_AddBoolToObject(usage,"stored_ledger_exists",1);cJSON_AddNumberToObject(usage,"used_bytes",72209832263.0);cJSON_AddStringToObject(usage,"warning","normal");
++ a->rate_history_count=32;static const double rates[]={.22,.36,.31,.48,.45,.63,.52,.81,.72,.55,.67,.93,.76,.65,.88,.72,.57,.44,.61,.74,.53,.69,.85,.62,.51,.46,.64,.81,.73,.54,.77,.68};for(int i=0;i<32;i++)a->rate_history[i]=rates[i];
+  cJSON_AddItemToObject(d,"auth_bypass",cJSON_Parse("{\"available\":true,\"enabled\":true,\"guard_running\":true,\"drift\":false,\"valid\":0,\"switch\":0}"));
+ }
+-static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++)assert(!(a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0));}}
++static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++){int overlap=a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0;if(overlap)fprintf(stderr,"overlap: [%d] id=%d (%d,%d,%d,%d) [%d] id=%d (%d,%d,%d,%d)\n",j,a->hits[j].id,a->hits[j].x0,a->hits[j].y0,a->hits[j].x1,a->hits[j].y1,i,a->hits[i].id,a->hits[i].x0,a->hits[i].y0,a->hits[i].x1,a->hits[i].y1);assert(!overlap);}}}
+ static void shell_preview_write(struct drm_buf*b,const char*dir,int page){char path[1024];int i;snprintf(path,sizeof(path),"%s/shell-%02d.ppm",dir,page);FILE*f=fopen(path,"wb");assert(f);fprintf(f,"P6\n320 480\n255\n");for(i=0;i<320*480;i++){uint16_t p=b->map[i];unsigned char rgb[]={((p>>11)&31)*255/31,((p>>5)&63)*255/63,(p&31)*255/31};fwrite(rgb,1,3,f);}fclose(f);}
+ static cJSON *shell_preview_large_choices(struct app*a){
+  cJSON*it=cJSON_CreateObject();cJSON_AddStringToObject(it,"label","全部代理节点");cJSON_AddStringToObject(it,"type","choice");cJSON_AddStringToObject(it,"action","preview.select");cJSON_AddBoolToObject(it,"confirm",1);
+@@ -137,6 +140,9 @@ static void shell_preview_battery_power(struct drm_buf*b,const char*dir){
+ }
+ static void shell_preview_live_regressions(struct drm_buf*b){
+  struct app a;shell_preview_fixture(&a);cJSON*d=sh_get(a.shell.snapshot,"data"),*cl=sh_get(d,"clash");
++ /* These regions describe the classic home hierarchy. Beacon has its own
++  * layout and is checked separately below. */
++ sh_theme=0;
+  cJSON_DeleteItemFromObject(d,"clash_status");cJSON_ReplaceItemInObject(cl,"online",cJSON_CreateBool(1));
+  a.clash_online=1;shell_render(b,&a);uint16_t before[320*480];memcpy(before,b->map,sizeof(before));
+  a.clash_online=0;shell_render(b,&a);int clash_ok=shell_preview_same_region(b,before,12,70,308,94);
+@@ -151,14 +157,44 @@ static void shell_preview_live_regressions(struct drm_buf*b){
+  cJSON*auth=sh_get(d,"auth_bypass");memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(auth,"guard_running",cJSON_CreateBool(0));shell_render(b,&a);assert(!shell_preview_same_region(b,before,190,70,308,94));cJSON_ReplaceItemInObject(auth,"guard_running",cJSON_CreateBool(1));assert(!strcmp(sh_auth_bypass_label(d),"终端默认放行"));
+  char clock_buf[16];sh_clock_text(0,clock_buf,sizeof(clock_buf));assert(!strcmp(clock_buf,"--:--"));
+  assert(text_width("100",14)<=28&&text_width("23:59",22)<=58);
+- cJSON*usage=cJSON_AddObjectToObject(d,"usage");cJSON_AddStringToObject(usage,"warning","normal");shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("threshold"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,184,305,201));
++ cJSON*usage=sh_get(d,"usage");cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("normal"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("threshold"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,184,305,201));
+  /* Unknown SIM sampling cannot display an old cycle as current usage. The
+   * snapshot also distinguishes an existing file from this sample being saved. */
+- cJSON_AddBoolToObject(usage,"available",1);cJSON_AddBoolToObject(usage,"persisted",0);cJSON_AddBoolToObject(usage,"stored_ledger_exists",1);cJSON_AddNumberToObject(usage,"used_bytes",1500000000);assert(!strcmp(sh_usage_saved(usage),"已有存档 · 本次估算"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));
++ cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"persisted",cJSON_CreateBool(0));cJSON_ReplaceItemInObject(usage,"stored_ledger_exists",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"used_bytes",cJSON_CreateNumber(1500000000));assert(!strcmp(sh_usage_saved(usage),"已有存档 · 本次估算"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));
+  cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(0));assert(!strcmp(sh_usage_saved(usage),"读数未知 · 存档保留"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,206,305,229));
+  cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"persisted",cJSON_CreateBool(1));assert(!strcmp(sh_usage_saved(usage),"本次已保存"));
+  sh_close(&a);cJSON_Delete(a.shell.snapshot);
+ }
++static void shell_preview_beacon(struct drm_buf*b,const char*dir){
++ struct app a;shell_preview_fixture(&a);sh_theme=3;
++ a.shell.locked=1;shell_render(b,&a);shell_preview_hits(&a);
++ assert(a.nhits==1&&a.hits[0].id==SH_UNLOCK);
++ assert(a.hits[0].x0==0&&a.hits[0].y0==0&&a.hits[0].x1==320&&a.hits[0].y1==480);
++ shell_preview_write(b,dir,500);
++ shell_hit(&a,SH_UNLOCK);assert(!a.shell.locked);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,501);
++ /* The reported header/card collision must leave a visible blank band. */
++ for(int y=68;y<78;y++)for(int x=16;x<304;x++)assert(b->map[y*320+x]==SH_BG);
++ for(int i=0;i<a.nhits;i++)assert(a.hits[i].y1-a.hits[i].y0>=44);
++ a.shell.tab=4;a.shell.subpage=0;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,502);
++ int section_hit=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30)section_hit=1;assert(section_hit);
++ /* Supply a representative settings section so the detail screenshot shows
++   * real controls rather than the initial loading state. */
++ cJSON_AddItemToArray(sh_get(a.shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"system\",\"title\":\"电源与屏幕\",\"items\":[{\"id\":\"theme\",\"label\":\"界面主题\",\"value\":\"原厂蓝白\",\"type\":\"choice\",\"action\":\"screen.theme\",\"enabled\":true,\"choices\":[{\"label\":\"原厂蓝白\",\"args\":{\"theme\":\"beacon\"}}]},{\"id\":\"brightness\",\"label\":\"屏幕亮度\",\"value\":\"中\",\"type\":\"choice\",\"action\":\"screen.brightness\",\"enabled\":true,\"choices\":[{\"label\":\"中\",\"args\":{\"value\":160}}]},{\"id\":\"blank\",\"label\":\"自动熄屏\",\"value\":\"2 分钟\",\"type\":\"choice\",\"action\":\"screen.blank\",\"enabled\":true,\"choices\":[{\"label\":\"2 分钟\",\"args\":{\"seconds\":120}}]},{\"id\":\"system.saver\",\"label\":\"原厂节能开关\",\"value\":\"已关闭\",\"type\":\"toggle\",\"action\":\"system.saver\",\"enabled\":true,\"args\":{\"enabled\":true}}]}"));
++ shell_hit(&a,SH_SECTION);assert(!strcmp(a.shell.section,"system")&&a.shell.subpage);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,503);
++ shell_hit(&a,SH_BACK);assert(!a.shell.subpage);
++ a.shell.tab=1;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,504);
++ a.shell.tab=2;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,505);
++ a.shell.subpage=0;a.shell.tab=3;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,506);
++ a.shell.tab=1;sh_open_section(&a,"wifi");shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,507);
++ /* Keep absent telemetry visibly unknown in the redesigned home/lock. */
++ cJSON*d=sh_get(a.shell.snapshot,"data");cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");
++ cJSON_DeleteItemFromObject(d,"network");cJSON_DeleteItemFromObject(d,"band");cJSON_DeleteItemFromObject(d,"memory_percent");
++ cJSON_ReplaceItemInObject(sh_get(d,"usage"),"available",cJSON_CreateBool(0));
++ a.shell.subpage=0;a.shell.tab=0;a.rate_history_count=0;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,508);
++ a.shell.locked=1;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,509);
++ sh_theme=0;cJSON_Delete(a.shell.snapshot);
++ puts("PASS: stock blue/white lock, five tabs and details at 320x480; header clearance; unknown telemetry; targets >=44px");
++}
+ static void shell_preview_reports(struct drm_buf*b,const char*dir){
+  struct app a;shell_preview_fixture(&a);a.shell.tab=4;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,20);
+  shell_pointer(&a,150,350,1,0);shell_pointer(&a,150,150,1,0);shell_pointer(&a,150,150,0,1);assert(a.shell.menu_page>0);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,21);
+@@ -271,15 +307,17 @@ static void shell_preview_scroll_gestures(struct drm_buf*b,const char*dir){
+  assert(a.shell.menu_page==SH_PAGE_OFFSET&&!a.shell.subpage&&!a.shell.modal&&!a.shell.busy);shell_preview_hits(&a);
+  assert(shell_preview_same_region(b,before,0,432,320,480));assert(shell_preview_same_region(b,before,198,0,320,44));
+  /* All four rows remain complete, and a swipe cannot become an action. */
+- int rows=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30){assert(a.hits[i].y0>=80&&a.hits[i].y1<=353&&a.hits[i].y1-a.hits[i].y0==57);rows++;}assert(rows==4);
++ int rows=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30){assert(a.hits[i].y0>=78&&a.hits[i].y1<=426);assert(sh_theme==3?(a.hits[i].y1-a.hits[i].y0>=44):(a.hits[i].y1-a.hits[i].y0==57));rows++;}assert(rows==(sh_theme==3?6:4));
+  shell_preview_write(b,dir,200+theme);
+  int old=a.shell.menu_page;shell_pointer(&a,130,20,1,0);shell_pointer(&a,130,200,1,0);shell_pointer(&a,130,200,0,1);assert(a.shell.menu_page==old);
+  shell_hit(&a,SH_TAB+1);shell_render(b,&a);shell_hit(&a,SH_TAB+4);shell_render(b,&a);assert(a.shell.menu_page==old);
+  /* Daily eSIM is on the first page, and advanced/recovery remain reachable
+   * with their original action identities after the display order changes. */
+  shell_hit(&a,SH_PREV);shell_render(b,&a);assert(a.shell.menu_page==0);int esim_hit=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_SECTION+8)esim_hit++;assert(esim_hit==1);
+- shell_pointer(&a,150,325,1,0);shell_pointer(&a,150,325,0,1);assert(!strcmp(a.shell.section,"esim")&&a.shell.subpage&&!a.shell.busy);shell_render(b,&a);shell_hit(&a,SH_BACK);shell_render(b,&a);assert(!a.shell.subpage&&a.shell.menu_page==0);
+- shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==2*SH_PAGE_OFFSET);int diagnostic=0,recovery=0,next=0;for(int h=0;h<a.nhits;h++){diagnostic+=a.hits[h].id==SH_SECTION+7;recovery+=a.hits[h].id==SH_FACTORY;next+=a.hits[h].id==SH_NEXT;}assert(diagnostic==1&&recovery==1&&next==0);shell_preview_hits(&a);shell_preview_write(b,dir,203+theme);
++ int esim_row=-1;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_SECTION+8)esim_row=h;assert(esim_row>=0);shell_hit(&a,SH_SECTION+8);assert(!strcmp(a.shell.section,"esim")&&a.shell.subpage&&!a.shell.busy);shell_render(b,&a);shell_hit(&a,SH_BACK);shell_render(b,&a);assert(!a.shell.subpage&&a.shell.menu_page==0);
++ if(sh_theme==3){shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==SH_PAGE_OFFSET);}
++ else {shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==2*SH_PAGE_OFFSET);}
++ int diagnostic=0,recovery=0,next=0;for(int h=0;h<a.nhits;h++){diagnostic+=a.hits[h].id==SH_SECTION+7;recovery+=a.hits[h].id==SH_FACTORY;next+=a.hits[h].id==SH_NEXT;}assert(diagnostic==1&&recovery==1&&next==0);shell_preview_hits(&a);shell_preview_write(b,dir,203+theme);
+  /* The terminal-auth bypass page is appended last so every earlier page id
+   * stays stable; it opens as its own page and is distinct from the factory
+   * row that closes the list. */
+@@ -345,7 +383,7 @@ static int shell_preview_main(const char*dir){
+  for(size_t t=0;t<sizeof(invalid)/sizeof(invalid[0]);t++){char*owned=strdup(invalid[t]);const char*q=owned;while(*q){const char*before=q;assert(utf8_next(&q)==0x3f);assert(q>before&&q<=owned+strlen(owned));}free(owned);}
+  const char*q="中";assert(utf8_next(&q)==0x4e2d&&!*q);
+  if(font_load()<0)return 1;b.pitch=640;b.size=320*480*2;b.map=calloc(320*480,2);
+- shell_preview_live_regressions(&b);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
++ shell_preview_live_regressions(&b);shell_preview_beacon(&b,dir);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
+  for(page=0;page<15;page++){
+   shell_preview_fixture(&a);
+   if(page<5)a.shell.tab=page;
+diff --git a/panel/panel-shell-ui.h b/panel/panel-shell-ui.h
+index 16b1e1b..101aa3d 100644
+--- a/panel/panel-shell-ui.h
++++ b/panel/panel-shell-ui.h
+@@ -9,8 +9,19 @@ static int sh_theme=0;
+ static const uint16_t sh_palettes[PANEL_THEME_COUNT][8]={
+  {SH_RGB(18,26,36),SH_RGB(29,39,52),SH_RGB(39,51,66),SH_RGB(240,246,250),SH_RGB(207,217,225),SH_RGB(120,222,206),SH_RGB(12,39,39),SH_RGB(255,190,108)},
+  {SH_RGB(190,203,213),SH_RGB(208,217,225),SH_RGB(185,199,214),SH_RGB(53,68,83),SH_RGB(67,83,101),SH_RGB(24,77,145),SH_RGB(255,255,255),SH_RGB(153,75,10)},
+- {SH_RGB(28,54,70),SH_RGB(42,73,89),SH_RGB(57,88,103),SH_RGB(243,248,251),SH_RGB(212,228,237),SH_RGB(173,235,220),SH_RGB(20,60,61),SH_RGB(255,207,145)}
++ {SH_RGB(28,54,70),SH_RGB(42,73,89),SH_RGB(57,88,103),SH_RGB(243,248,251),SH_RGB(212,228,237),SH_RGB(173,235,220),SH_RGB(20,60,61),SH_RGB(255,207,145)},
++ {SH_RGB(239,243,247),SH_RGB(255,255,255),SH_RGB(229,239,250),SH_RGB(36,55,70),SH_RGB(98,115,132),SH_RGB(15,135,247),SH_RGB(255,255,255),SH_RGB(153,75,10)}
+ };
++/* The review layout shares the stock web enhancement's blue/white palette.
++ * Outer/content insets are 16px; adjacent cards have 12px vertical clearance.
++ * Header clearance includes the text height, not just its origin. */
++#define SH_BEACON_X0 16
++#define SH_BEACON_X1 304
++#define SH_BEACON_GAP 10
++#define SH_BEACON_PAD 16
++#define SH_BEACON_VGAP 12
++#define SH_BEACON_TOP 80
++#define SH_BEACON_LINE SH_RGB(226,232,239)
+ #define SH_BG sh_palettes[sh_theme][0]
+ #define SH_CARD sh_palettes[sh_theme][1]
+ #define SH_RAISED sh_palettes[sh_theme][2]
+@@ -20,17 +31,35 @@ static const uint16_t sh_palettes[PANEL_THEME_COUNT][8]={
+ #define SH_DARK sh_palettes[sh_theme][6]
+ #define SH_WARN sh_palettes[sh_theme][7]
+ /* Static RGB565 glass: cache the soft background once, then composite card
+- * surfaces with integer alpha. No animation, blur pass or extra wake timer. */
++ * surfaces with integer alpha. No animation, blur pass or extra wake timer.
++ * The light review theme uses a solid background and opaque surfaces. */
+ static uint16_t sh_glass_bg[320*480];
+ static int sh_glass_ready;
++static int sh_glass_cached_theme=-1;
+ static uint16_t sh_mix(uint16_t a,uint16_t b,int alpha){
++ if(alpha<=0)return a;if(alpha>=255)return b;
+  int r=(((a>>11)&31)*(255-alpha)+((b>>11)&31)*alpha+127)/255;
+  int g=(((a>>5)&63)*(255-alpha)+((b>>5)&63)*alpha+127)/255;
+  int z=((a&31)*(255-alpha)+(b&31)*alpha+127)/255;
+  return (uint16_t)((r<<11)|(g<<5)|z);
+ }
++static void sh_plot_alpha(struct drm_buf*b,int x,int y,uint16_t c,int alpha){
++ if(alpha<=0||x<0||x>=W||y<draw_clip_top||y>=draw_clip_bottom)return;
++ uint16_t*row=(uint16_t*)((uint8_t*)b->map+y*b->pitch);
++ row[x]=sh_mix(row[x],c,alpha>255?255:alpha);
++}
++static float sh_round_distance(float x,float y,float x0,float y0,float x1,float y1,float r){
++ float cx=x<x0+r?x0+r:x>x1-r?x1-r:x;
++ float cy=y<y0+r?y0+r:y>y1-r?y1-r:y;
++ float dx=x-cx,dy=y-cy;
++ return sqrtf(dx*dx+dy*dy)-r;
++}
++static int sh_aa_coverage(float d){
++ float a=.5f-d;if(a<=0)return 0;if(a>=1)return 255;return (int)(a*255.0f+.5f);
++}
+ static void sh_glass_init(void){
+- if(sh_glass_ready)return;
++ if(sh_glass_ready&&sh_glass_cached_theme==sh_theme)return;
++ sh_glass_ready=0;
+  static const int dither[4][4]={{0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}};
+  for(int y=0;y<480;y++)for(int x=0;x<320;x++){
+   float dx=x-305.0f,dy=y-15.0f;
+@@ -43,7 +72,8 @@ static void sh_glass_init(void){
+   float q=(dither[y&3][x&3]-7.5f)/16.0f;
+   int rr=(int)(r*31/255+q+.5f),gg=(int)(g*63/255+q+.5f),bb=(int)(z*31/255+q+.5f);
+   sh_glass_bg[y*320+x]=(uint16_t)((rr<<11)|(gg<<5)|bb);
+- }sh_glass_ready=1;
++ }
++ sh_glass_ready=1;sh_glass_cached_theme=sh_theme;
+ }
+ static void sh_background(struct drm_buf*b,int x0,int y0,int x1,int y1){
+  if(sh_theme!=2){fill_rect(b,x0,y0,x1,y1,SH_BG);return;}
+@@ -57,7 +87,23 @@ static int sh_round_contains(int x,int y,int x0,int y0,int x1,int y1,int r){
+  return (x-cx)*(x-cx)+(y-cy)*(y-cy)<=r*r;
+ }
+ static void sh_surface(struct drm_buf*b,int x0,int y0,int x1,int y1,int r,uint16_t c){
+- if(sh_theme!=2){fill_round(b,x0,y0,x1,y1,r,c);return;}
++ if(sh_theme!=2&&sh_theme!=3){fill_round(b,x0,y0,x1,y1,r,c);return;}
++ /* Rounded edges retain native antialiasing on the opaque light theme. */
++ if(sh_theme==3){
++  for(int y=y0-1;y<y1+1;y++){
++   if(y<draw_clip_top||y>=draw_clip_bottom)continue;
++   uint16_t*row=(uint16_t*)((uint8_t*)b->map+y*b->pitch);
++   for(int x=x0-1;x<x1+1;x++){
++    if(x<0||x>=320)continue;
++    float d=sh_round_distance(x+.5f,y+.5f,x0,y0,x1,y1,r);
++    int coverage=sh_aa_coverage(d);if(!coverage)continue;
++    uint16_t base=sh_mix(row[x],c,coverage);
++    int border=c==SH_CARD?sh_aa_coverage(fabsf(d+.55f)-.4f):0;
++    row[x]=sh_mix(base,SH_BEACON_LINE,border);
++   }
++  }
++  return;
++ }
+  sh_glass_init();
+  for(int y=y0;y<y1;y++){
+   if(y<draw_clip_top||y>=draw_clip_bottom)continue;
+@@ -72,6 +118,16 @@ static void sh_surface(struct drm_buf*b,int x0,int y0,int x1,int y1,int r,uint16
+ }
+ /* Tiny native strokes stay present offline and do not depend on font glyphs. */
+ static void sh_icon_line(struct drm_buf*b,int x0,int y0,int x1,int y1,uint16_t c){
++ if(sh_theme==3){
++  float vx=x1-x0,vy=y1-y0,len=vx*vx+vy*vy;
++  int minx=x0<x1?x0:x1,maxx=x0>x1?x0:x1,miny=y0<y1?y0:y1,maxy=y0>y1?y0:y1;
++  for(int y=miny-1;y<=maxy+2;y++)for(int x=minx-1;x<=maxx+2;x++){
++   float t=len?((x-x0)*vx+(y-y0)*vy)/len:0;if(t<0)t=0;if(t>1)t=1;
++   float dx=x-(x0+t*vx),dy=y-(y0+t*vy);
++   sh_plot_alpha(b,x,y,c,sh_aa_coverage(sqrtf(dx*dx+dy*dy)-.8f));
++  }
++  return;
++ }
+  int dx=abs(x1-x0),sx=x0<x1?1:-1,dy=-abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;
+  for(;;){fill_rect(b,x0,y0,x0+2,y0+2,c);if(x0==x1&&y0==y1)break;int e=2*err;if(e>=dy){err+=dy;x0+=sx;}if(e<=dx){err+=dx;y0+=sy;}}
+ }
+@@ -84,7 +140,25 @@ static void sh_nav_icon(struct drm_buf*b,int type,int x,int y,uint16_t c){
+  else {IL(0,3,16,3);IL(0,9,16,9);IL(0,15,16,15);fill_circle(b,x+5,y+4,2,c);fill_circle(b,x+12,y+10,2,c);fill_circle(b,x+6,y+16,2,c);}
+  #undef IL
+ }
+-enum { SH_BACK=2000,SH_REFRESH,SH_PREV,SH_NEXT,SH_CANCEL,SH_APPLY,SH_CONFIRM,
++/* Settings tiles use the same native line vocabulary as the main navigation.
++ * Avoid font glyphs here: fallback fonts make icons inconsistent and blurry. */
++static void sh_tile_icon(struct drm_buf*b,int type,int x,int y,uint16_t c){
++ #define TL(a,d,e,f) sh_icon_line(b,x+(a),y+(d),x+(e),y+(f),c)
++ if(type==0){TL(2,3,15,3);TL(15,3,15,12);TL(15,12,2,12);TL(2,12,2,3);TL(8,12,8,16);TL(5,16,11,16);}
++ else if(type==1){TL(3,5,14,5);TL(14,5,14,13);TL(14,13,3,13);TL(3,13,3,5);TL(16,8,16,10);TL(6,8,10,8);TL(8,6,8,10);}
++ else if(type==2){TL(10,4,4,10);TL(4,10,5,14);TL(5,14,9,15);TL(9,15,14,10);TL(10,4,15,8);}
++ else if(type==3){TL(6,4,12,4);TL(12,4,14,7);TL(14,7,14,13);TL(14,13,12,15);TL(12,15,6,15);TL(6,15,4,13);TL(4,13,4,7);TL(4,7,6,4);TL(8,8,10,10);TL(10,10,12,7);}
++ else if(type==4){TL(4,12,6,5);TL(6,5,10,8);TL(10,8,14,4);TL(14,4,15,13);TL(4,12,15,13);}
++ else if(type==5){TL(3,4,15,4);TL(15,4,15,12);TL(15,12,8,12);TL(8,12,4,15);TL(4,15,4,12);TL(4,12,2,12);TL(2,12,2,4);TL(5,7,12,7);TL(5,9,10,9);}
++ else if(type==6)sh_nav_icon(b,1,x,y,c);
++ else if(type==7){TL(9,16,9,2);TL(6,5,9,2);TL(9,2,12,5);TL(9,11,4,7);TL(4,7,4,4);TL(9,12,14,8);TL(14,8,14,6);}
++ else if(type==8)sh_nav_icon(b,3,x,y,c);
++ else if(type==9){fill_circle(b,x+8,y+5,3,c);TL(2,16,3,12);TL(3,12,8,10);TL(8,10,13,12);TL(13,12,14,16);}
++ else if(type==10)sh_nav_icon(b,2,x,y,c);
++ else if(type==11){for(int i=0;i<4;i++)fill_rect(b,x+3+i*4,y+13-i*3,x+5+i*4,y+16,c);}
++ #undef TL
++}
++enum { SH_BACK=2000,SH_REFRESH,SH_PREV,SH_NEXT,SH_CANCEL,SH_APPLY,SH_CONFIRM,SH_UNLOCK,
+  SH_KEYMODE,SH_SHIFT,SH_DELETE,SH_SPACE,SH_DONE,SH_REVEAL,SH_FIELD_PREV,SH_FIELD_NEXT,
+  SH_POWER_OFF,SH_POWER_REBOOT,SH_FACTORY,SH_SEARCH=2031,SH_SEARCH_CLEAR,SH_ALPHA,SH_DIGITS,SH_SYMBOLS,SH_STATUS=2030,SH_TAB=2020,SH_SECTION=2040,
+  SH_ITEM=10000,SH_CHOICE=20000,SH_FIELD=30000,SH_KEY=2600 };
+@@ -113,10 +187,12 @@ static int sh_current_group(struct app*a){
+ }
+ static uint16_t sh_category_card(int group){
+  static const uint16_t colors[]={SH_RGB(32,52,78),SH_RGB(24,58,59),SH_RGB(57,43,69)};
++ if(sh_theme==3)return SH_CARD;
+  return sh_theme?SH_CARD:colors[group];
+ }
+ static uint16_t sh_category_ink(int group){
+  static const uint16_t colors[]={SH_RGB(146,188,245),SH_RGB(120,222,206),SH_RGB(208,181,240)};
++ if(sh_theme==3)return SH_CYAN;
+  return sh_theme?SH_CYAN:colors[group];
+ }
+ static void sh_text(struct drm_buf*b,int x,int y,const char*t,int sz,uint16_t col,int w){draw_text_clip(b,x,y,t,sz<14?14:sz,col,w);}
+@@ -303,6 +379,7 @@ static int sh_menu_index(struct app*a,int index){
+  * the screen's own short menu name for the pages it owns; fall back to the
+  * backend title (web/Clash/Tailscale pages) when there is no screen name. */
+ static const char *sh_section_title(struct app*a,const char *id,cJSON *sec){
++ (void)a;
+  for(size_t n=0;n<sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0]);n++)
+   if(!strcmp(sh_settings_sections[n],id))return sh_settings_titles[n];
+  for(size_t n=0;n<sizeof(sh_net_sections)/sizeof(sh_net_sections[0]);n++)
+@@ -384,7 +461,137 @@ static void sh_statusbar(struct drm_buf*b,struct app*a,time_t now){
+  if(bars<=0){fill_rect(b,282,11,305,30,SH_BG);sh_text(b,286,12,bars<0?"?":"×",18,SH_MUTED,13);}
+ 
+ }
++/* The Beacon review surface mirrors the supplied lock-screen reference:
++ * large clock, three compact status rings, then live rate. It deliberately
++ * contains no action. The first tap is consumed to reveal the normal shell;
++ * this is a visual lock, not a device-security boundary. */
++static void sh_ring(struct drm_buf*b,int cx,int cy,int radius,double fraction,uint16_t color){
++ if(!isfinite(fraction))return;
++ if(fraction<0)fraction=0;if(fraction>1)fraction=1;
++ /* Antialiased 1.8px ring. A full ring is drawn first; a shorter coloured arc
++    then replaces the track clockwise from twelve o'clock. */
++ int outer=radius+2;
++ for(int y=cy-outer;y<cy+outer;y++)for(int x=cx-outer;x<cx+outer;x++){
++  float dx=x+.5f-cx,dy=y+.5f-cy,dist=sqrtf(dx*dx+dy*dy);
++  int alpha=sh_aa_coverage(fabsf(dist-radius)-.9f);
++  if(!alpha)continue;
++  float angle=atan2f(dx,-dy);if(angle<0)angle+=6.2831853f;
++  int inside=angle<=fraction*6.2831853f+.00001f;
++  sh_plot_alpha(b,x,y,inside?color:SH_RAISED,alpha);
++ }
++}
++static double sh_history_max(struct app*a,double fallback){
++ double max=fallback>0?fallback:1;
++ for(int i=0;i<a->rate_history_count;i++)if(isfinite(a->rate_history[i])&&a->rate_history[i]>max)max=a->rate_history[i];
++ return max;
++}
++static void sh_rate_graph(struct drm_buf*b,struct app*a,int x0,int y0,int x1,int y1,uint16_t line,uint16_t fill){
++ int n=a->rate_history_count;if(n<2)return;
++ int points=31,start=n>points?n-points:0,count=n-start;double max=sh_history_max(a,1);
++ int px=0,py=0;
++ for(int i=0;i<count;i++){
++  int x=x0+(x1-x0)*i/(points-1);
++  double fraction=a->rate_history[start+i]/max;if(fraction<0)fraction=0;if(fraction>1)fraction=1;
++  int y=y1-2-(int)(fraction*(y1-y0-4));if(!i){px=x;py=y;continue;}
++  for(int yy=y+1;yy<y1-1;yy++)for(int xx=x-1;xx<=x+1;xx++)if(xx>=x0&&xx<x1)fill_rect(b,xx,yy,xx+1,yy+1,fill);
++  sh_icon_line(b,px,py,x,y,line);px=x;py=y;
++ }
++}
++static void sh_beacon_lock(struct drm_buf*b,struct app*a,time_t now){
++ cJSON*d=sh_get(a->shell.snapshot,"data");char tmp[160],clock_text[16],down[40],down_unit[16],used[40];
++ struct tm tm;char date[48]="日期读取中";
++ if(localtime_r(&now,&tm)&&tm.tm_year>=120){sh_clock_text(now,clock_text,sizeof(clock_text));static const char*weekdays[]={"周日","周一","周二","周三","周四","周五","周六"};snprintf(date,sizeof(date),"%d月%d日 · %s",tm.tm_mon+1,tm.tm_mday,weekdays[tm.tm_wday]);}else snprintf(clock_text,sizeof(clock_text),"--:--");
++ sh_background(b,0,0,320,480);
++ sh_text(b,SH_BEACON_X0,14,"U60 Pro",15,SH_MUTED,86);
++ int bars=sh_signal_bars(a),bat=sh_status_value(sh_get(d,"battery"),100);
++ if(bars>=0)for(int i=0;i<bars;i++)fill_rect(b,211+i*4,23-i*2,214+i*4,25,SH_CYAN);
++ else sh_text(b,211,14,"—",14,SH_MUTED,22);
++ snprintf(tmp,sizeof(tmp),"%s",bat>=0?"":"");if(bat>=0)snprintf(tmp,sizeof(tmp),"%d%%",bat);else snprintf(tmp,sizeof(tmp),"—");
++ sh_text(b,251,14,tmp,14,SH_TEXT,58);
++ sh_text(b,SH_BEACON_X0,40,sh_str(d,"operator","运营商未知"),14,SH_MUTED,287);
++ draw_text_center(b,16,304,83,date,15,SH_MUTED);
++ draw_text_center(b,0,320,108,clock_text,60,SH_TEXT);
++ int ram=sh_num(d,"memory_percent",-1);
++ sh_ring(b,63,232,28,1.0,SH_RAISED);sh_ring(b,63,232,28,ram>=0?ram/100.0:-1,SH_CYAN);
++ draw_text_center(b,16,110,266,"内存",14,SH_MUTED);
++ snprintf(tmp,sizeof(tmp),ram>=0?"%d%%":"—",ram);draw_text_center(b,31,95,220,tmp,20,SH_TEXT);
++ const char*network=sh_str(d,"network","网络未知"),*badge=strstr(network,"5G")?"5G":strstr(network,"4G")||strstr(network,"LTE")?"4G":strstr(network,"Wi-Fi")?"Wi-Fi":"—";
++ int known_network=strcmp(badge,"—")!=0;
++ sh_ring(b,160,232,28,1.0,SH_RAISED);if(known_network)sh_ring(b,160,232,28,1.0,SH_CYAN);
++ draw_text_center(b,128,192,220,badge,22,SH_TEXT);
++ draw_text_center(b,112,208,266,network,14,SH_MUTED);
++ sh_metric(d,"month_bytes",used,sizeof(used),0);snprintf(tmp,sizeof(tmp),"%s",used);
++ cJSON*usage=sh_get(d,"usage");double traffic_fraction=-1;
++ if(cJSON_IsNumber(sh_get(usage,"used_bytes"))&&cJSON_IsNumber(sh_get(usage,"allowance_bytes"))&&sh_get(usage,"allowance_bytes")->valuedouble>0)traffic_fraction=sh_get(usage,"used_bytes")->valuedouble/sh_get(usage,"allowance_bytes")->valuedouble;
++ sh_ring(b,257,232,28,1.0,SH_RAISED);sh_ring(b,257,232,28,traffic_fraction,SH_CYAN);
++ char*unit=strrchr(tmp,' ');char traffic_label[48]="本月流量";
++ if(unit){*unit++=0;snprintf(traffic_label,sizeof(traffic_label),"本月 · %s",unit);}
++ draw_text_center(b,225,289,220,tmp,20,SH_TEXT);
++ draw_text_center(b,210,304,266,traffic_label,14,SH_MUTED);
++ sh_surface(b,SH_BEACON_X0,300,SH_BEACON_X1,397,15,sh_category_card(SH_NETWORK_COLOR));
++ sh_rate(d,"download_bps",down,sizeof(down),down_unit,sizeof(down_unit));
++ snprintf(tmp,sizeof(tmp),"↓ %s %s",down,down_unit);sh_text(b,32,309,tmp,15,SH_MUTED,146);
++ sh_text(b,216,309,"下载趋势",14,SH_MUTED,72);
++ sh_rate_graph(b,a,32,339,288,381,SH_CYAN,SH_RAISED);
++ draw_text_center(b,16,304,414,"轻触进入",14,SH_MUTED);
++ sh_icon_line(b,148,445,160,433,SH_CYAN);sh_icon_line(b,160,433,172,445,SH_CYAN);
++ hit_add(a,0,0,320,480,SH_UNLOCK);
++}
++static const char *sh_beacon_proxy_state(cJSON*cl,char*out,size_t cap){
++ if(!cJSON_IsObject(cl)||!cJSON_IsTrue(sh_get(cl,"online"))){snprintf(out,cap,"代理未运行");return out;}
++ const char*mode=sh_str(cl,"mode","");snprintf(out,cap,"%s · %s",mode_label(mode),sh_str(cl,"node","未选择节点"));return out;
++}
++static void sh_beacon_home(struct drm_buf*b,struct app*a){
++ struct panel_shell*s=&a->shell;cJSON*d=sh_get(s->snapshot,"data"),*cl=sh_get(d,"clash");char tmp[180],down[40],up[40],down_unit[16],up_unit[16],today[40],used[40],clients[20];
++ sh_text(b,SH_BEACON_X0,50,sh_str(d,"operator","运营商未知"),14,SH_MUTED,150);
++ const char*auth=sh_auth_bypass_label(d);int auth_w=text_width(auth,14);if(auth_w>126)auth_w=126;
++ sh_text(b,SH_BEACON_X1-auth_w,50,auth,14,sh_auth_bypass_color(d),auth_w);
++ /* 14px status text at y=50 has 16px clearance before the first card.
++  * Keep connection identity compact and give both live rates equal columns. */
++ int main_top=SH_BEACON_TOP,main_end=main_top+124;
++ sh_surface(b,SH_BEACON_X0,main_top,SH_BEACON_X1,main_end,12,SH_CARD);
++ snprintf(tmp,sizeof(tmp),"%s · %s",sh_str(d,"network","网络未知"),sh_str(d,"band","频段未知"));sh_text(b,32,main_top+12,tmp,16,SH_TEXT,170);
++ int bars=sh_signal_bars(a);snprintf(tmp,sizeof(tmp),bars>=0?"信号 %d/5":"信号未知",bars);int signal_w=text_width(tmp,14);
++ sh_text(b,288-signal_w,main_top+14,tmp,14,bars>=0&&bars<3?SH_WARN:SH_MUTED,signal_w);
++ fill_rect(b,32,main_top+37,288,main_top+38,SH_BEACON_LINE);
++ sh_rate(d,"download_bps",down,sizeof(down),down_unit,sizeof(down_unit));sh_rate(d,"upload_bps",up,sizeof(up),up_unit,sizeof(up_unit));
++ fill_rect(b,160,main_top+48,161,main_end-16,SH_BEACON_LINE);
++ sh_text(b,32,main_top+47,"↓ 下载",14,SH_MUTED,112);sh_text(b,180,main_top+47,"↑ 上传",14,SH_MUTED,108);
++ sh_text(b,32,main_top+66,down,31,SH_TEXT,112);sh_text(b,180,main_top+66,up,31,SH_TEXT,108);
++ sh_text(b,32,main_top+98,down_unit,14,SH_MUTED,112);sh_text(b,180,main_top+98,up_unit,14,SH_MUTED,108);
++ hit_add(a,SH_BEACON_X0,main_top,SH_BEACON_X1,main_end,SH_SECTION+1);
++ cJSON*usage=sh_get(d,"usage");int warning=!strcmp(sh_str(usage,"warning",""),"threshold")||!strcmp(sh_str(usage,"warning",""),"exceeded");
++ sh_metric(d,"today_bytes",today,sizeof(today),0);
++ if(cJSON_IsTrue(sh_get(usage,"available")))sh_metric(usage,"used_bytes",used,sizeof(used),0);else snprintf(used,sizeof(used),"—");
++ int usage_top=main_end+SH_BEACON_VGAP,usage_end=usage_top+80;
++ int left_w=(SH_BEACON_X1-SH_BEACON_X0-SH_BEACON_GAP)*60/100,left_x1=SH_BEACON_X0+left_w,right_x0=left_x1+SH_BEACON_GAP;
++ sh_surface(b,SH_BEACON_X0,usage_top,left_x1,usage_end,12,SH_CARD);
++ sh_text(b,32,usage_top+12,warning?"流量预警":"蜂窝流量",14,warning?SH_WARN:SH_MUTED,left_w-32);
++ snprintf(tmp,sizeof(tmp),"今日 %s",today);sh_text(b,32,usage_top+32,tmp,21,SH_TEXT,left_w-32);
++ snprintf(tmp,sizeof(tmp),"本周期 %s",used);sh_text(b,32,usage_top+58,tmp,14,SH_MUTED,left_w-32);
++ hit_add(a,SH_BEACON_X0,usage_top,left_x1,usage_end,SH_SECTION+24);
++ sh_value(sh_get(d,"clients"),clients,sizeof(clients));
++ sh_surface(b,right_x0,usage_top,SH_BEACON_X1,usage_end,12,SH_CARD);
++ sh_text(b,right_x0+16,usage_top+12,"连接设备",14,SH_MUTED,SH_BEACON_X1-right_x0-32);
++ snprintf(tmp,sizeof(tmp),"%s 台",clients);sh_text(b,right_x0+16,usage_top+38,tmp,26,SH_TEXT,SH_BEACON_X1-right_x0-32);
++ hit_add(a,right_x0,usage_top,SH_BEACON_X1,usage_end,SH_SECTION+25);
++ int proxy_top=usage_end+SH_BEACON_VGAP,proxy_end=proxy_top+56;
++ sh_surface(b,SH_BEACON_X0,proxy_top,SH_BEACON_X1,proxy_end,12,SH_CARD);
++ sh_text(b,32,proxy_top+12,"代理",14,SH_MUTED,60);
++ snprintf(tmp,sizeof(tmp),"组网 %s",sh_str(d,"tailscale_status","未知"));int state_w=text_width(tmp,14);if(state_w>105)state_w=105;
++ sh_text(b,288-state_w,proxy_top+12,tmp,14,SH_MUTED,state_w);
++ sh_beacon_proxy_state(cl,tmp,sizeof(tmp));sh_text(b,32,proxy_top+32,tmp,16,SH_TEXT,240);
++ sh_text(b,281,proxy_top+31,"›",18,SH_CYAN,14);hit_add(a,SH_BEACON_X0,proxy_top,SH_BEACON_X1,proxy_end,SH_SECTION+22);
++ int access_top=proxy_end+SH_BEACON_VGAP,access_end=access_top+44;
++ sh_surface(b,SH_BEACON_X0,access_top,SH_BEACON_X1,access_end,12,SH_CARD);
++ const char*wifi=sh_str(d,"wifi_status","未知"),*usb=sh_str(d,"usb_status","未知");
++ if(!strncmp(usb,"USB ",4))usb+=4;
++ snprintf(tmp,sizeof(tmp),"Wi-Fi %s · USB %s",wifi,!strcmp(usb,"网络共享")?"共享":usb);
++ sh_text(b,32,access_top+14,tmp,14,SH_TEXT,240);
++ sh_text(b,281,access_top+12,"›",18,SH_CYAN,14);hit_add(a,SH_BEACON_X0,access_top,SH_BEACON_X1,access_end,SH_SECTION+20);
++}
+ static void sh_home(struct drm_buf*b,struct app*a){
++ if(sh_theme==3){sh_beacon_home(b,a);return;}
+  struct panel_shell*s=&a->shell;cJSON*d=sh_get(s->snapshot,"data"),*cl=sh_get(d,"clash");char tmp[160],down[40],up[40],down_unit[16],up_unit[16],today[40],quota[40],used[40];
+  if(!strcmp(sh_str(d,"physical_iface",""),"u60sta"))snprintf(tmp,sizeof(tmp),"%s",sh_str(d,"wifi_status","Wi-Fi 上游中继"));else snprintf(tmp,sizeof(tmp),"%s · %s",sh_str(d,"operator","运营商未知"),sh_str(d,"network","网络未知"));sh_text(b,16,51,tmp,15,SH_CYAN,287);
+  snprintf(tmp,sizeof(tmp),"出口 · %s",sh_outlet(d));sh_text(b,16,74,tmp,14,SH_MUTED,172);
+@@ -415,17 +622,56 @@ static void sh_home(struct drm_buf*b,struct app*a){
+ }
+ static void sh_navigation(struct drm_buf*b,struct app*a){
+  static const char*t[]={"总览","网络","代理","组网","设置"};
+- sh_background(b,0,432,320,480);fill_rect(b,0,432,320,433,SH_RAISED);
++ sh_background(b,0,432,320,480);
++ if(sh_theme==3)fill_rect(b,0,432,320,480,SH_CARD);
++ fill_rect(b,0,432,320,433,sh_theme==3?SH_BEACON_LINE:SH_RAISED);
+  for(int i=0;i<5;i++){
+   int x=i*64,group=i==1?SH_NETWORK_COLOR:(i==2||i==3)?SH_SERVICE_COLOR:SH_DEVICE_COLOR;
+   int selected=a->shell.tab==i;uint16_t ink=selected?sh_category_ink(group):SH_MUTED;
+-  if(selected)sh_surface(b,x+5,436,x+59,478,10,sh_theme?SH_RAISED:sh_category_card(group));
+-  sh_nav_icon(b,i,x+23,439,ink);draw_text_center(b,x,x+64,461,t[i],14,ink);
++  if(selected)sh_surface(b,x+5,435,x+59,477,10,sh_theme?SH_RAISED:sh_category_card(group));
++  sh_nav_icon(b,i,x+23,438,ink);draw_text_center(b,x,x+64,460,t[i],14,ink);
+   hit_add(a,x,433,x+64,480,SH_TAB+i);
+  }
+ }
+ static int sh_menu_count(struct app*a){return a->shell.tab==1?(int)(sizeof(sh_net_sections)/sizeof(sh_net_sections[0])):(int)(sizeof(sh_settings_sections)/sizeof(sh_settings_sections[0]))+1;}
++static void sh_beacon_settings(struct drm_buf*b,struct app*a){
++ struct panel_shell*s=&a->shell;int n=sh_menu_count(a);const char**names=s->tab==1?sh_net_titles:sh_settings_titles;const char**notes=s->tab==1?sh_net_notes:sh_settings_notes;
++ int pages=(n+5)/6;if(pages<1)pages=1;if(s->menu_page<0)s->menu_page=0;int page=s->menu_page/SH_PAGE_OFFSET;if(page>=pages)page=pages-1;s->menu_page=page*SH_PAGE_OFFSET;
++ s->scroll_offset=&s->menu_page;s->scroll_max=(pages-1)*SH_PAGE_OFFSET;s->scroll_top=SH_BEACON_TOP;s->scroll_bottom=368;
++ int first=page*6;
++ sh_text(b,SH_BEACON_X0,50,s->tab==1?"网络与共享":"常用设置与系统状态",14,SH_MUTED,288);
++ for(int k=0;k<6&&first+k<n;k++){
++  int i=sh_menu_index(a,first+k),row=k/2,col=k%2,tile_w=(SH_BEACON_X1-SH_BEACON_X0-SH_BEACON_GAP)/2,x=SH_BEACON_X0+col*(tile_w+SH_BEACON_GAP),y=SH_BEACON_TOP+row*96;
++  int factory=s->tab==4&&i==n-1;int group=factory?SH_DEVICE_COLOR:sh_color_group(s->tab==1?sh_net_sections[i]:sh_settings_sections[i]);
++  sh_surface(b,x,y,x+tile_w,y+86,12,SH_CARD);
++  if(factory){sh_icon_line(b,x+20,y+20,x+32,y+20,sh_category_ink(group));sh_icon_line(b,x+20,y+20,x+25,y+15,sh_category_ink(group));sh_icon_line(b,x+20,y+20,x+25,y+25,sh_category_ink(group));}
++  else {
++   int icon=(first+k)%6;
++   if(s->tab==1){const char*id=sh_net_sections[i];icon=!strcmp(id,"wifi")?6:!strcmp(id,"cell")?11:!strcmp(id,"usb")?7:!strcmp(id,"router")?8:!strcmp(id,"clients")?9:10;}
++   sh_tile_icon(b,icon,x+15,y+11,sh_category_ink(group));
++  }
++  const char*tile_label=factory?"原厂界面":names[i];
++  int tile_size=15;if(text_width(tile_label,15)>tile_w-32)tile_size=14;
++  sh_text(b,x+16,y+38,tile_label,tile_size,SH_TEXT,tile_w-32);
++  const char*tile_note=notes[i];
++  if(s->tab==1){const char*id=sh_net_sections[i];
++   if(!strcmp(id,"wifi"))tile_note="名称、密码与频段";
++   else if(!strcmp(id,"usb"))tile_note="数据线与网卡共享";
++   else if(!strcmp(id,"router"))tile_note="局域网与安全";
++   else if(!strcmp(id,"network-control"))tile_note="状态与按需启停";
++  }
++  if(s->tab==4&&!strcmp(sh_settings_sections[i],"esim"))tile_note="配置与切换";
++  sh_text(b,x+16,y+62,factory?"备用管理入口":tile_note,14,SH_MUTED,tile_w-32);
++  hit_add(a,x,y,x+tile_w,y+86,factory?SH_FACTORY:SH_SECTION+i);
++ }
++ if(pages>1){
++  if(page>0)sh_button(b,a,16,376,92,44,"上一页",SH_PREV,0);
++  if(page+1<pages)sh_button(b,a,212,376,92,44,"下一页",SH_NEXT,0);
++  char text[40];snprintf(text,sizeof(text),"%d / %d",page+1,pages);draw_text_center(b,108,212,392,text,16,SH_MUTED);
++ }
++}
+ static void sh_section_list(struct drm_buf*b,struct app*a){
++ if(sh_theme==3){sh_beacon_settings(b,a);return;}
+  int n=sh_menu_count(a);const char**names=a->shell.tab==1?sh_net_titles:sh_settings_titles;const char**notes=a->shell.tab==1?sh_net_notes:sh_settings_notes;
+  int first=sh_page_begin(a,&a->shell.menu_page,n);
+  const char*group=a->shell.tab==1?(first?"接入设备":"网络与共享"):(first==0?"常用设置":first==4?"信号、消息与卡槽":"高级与恢复");sh_text(b,16,56,group,14,SH_MUTED,288);
+@@ -438,6 +684,32 @@ static void sh_detail(struct drm_buf*b,struct app*a){
+  struct panel_shell*s=&a->shell;cJSON*sec=sh_section(a,s->section),*items=sh_get(sec,"items");int n=cJSON_GetArraySize(items);char val[256];
+  if(!sec){sh_wrap(b,24,100,"正在读取设置，请稍候，页面会自动更新。",268,4,SH_MUTED);return;}
+  int first=sh_page_begin(a,&s->item_page,n),row_top=80;
++ if(sh_theme==3){
++  int card_top=SH_BEACON_TOP,count=n-first;if(count>SH_PAGE_ITEMS)count=SH_PAGE_ITEMS;
++  if(!strcmp(s->section,"usage")){
++   cJSON*usage=sh_get(sh_get(s->snapshot,"data"),"usage");char label[180],note[160];
++   snprintf(label,sizeof(label),"设备估算 · %s",sh_usage_saved(usage));sh_text(b,16,52,label,14,SH_MUTED,288);
++   sh_usage_note(usage,note,sizeof(note));sh_text(b,16,74,note,14,SH_MUTED,288);card_top=104;
++  }else sh_text(b,16,54,n>SH_PAGE_ITEMS?"点选条目调整 · 上下滑动翻页":"点选条目调整",14,SH_MUTED,288);
++  s->scroll_top=card_top;
++  if(!count){sh_text(b,32,card_top+20,"暂无可显示的条目",15,SH_MUTED,256);return;}
++  sh_surface(b,SH_BEACON_X0,card_top,SH_BEACON_X1,card_top+count*64,12,SH_CARD);
++  for(int k=0;k<count;k++){
++   int i=first+k,y=card_top+k*64;cJSON*it=cJSON_GetArrayItem(items,i);sh_value(sh_get(it,"value"),val,sizeof(val));
++   if(!strcmp(sh_str(it,"type","info"),"action")&&!sh_get(it,"value"))snprintf(val,sizeof(val),"轻点执行");
++   int interactive=sh_item_interactive(it),title_w=text_width(sh_str(it,"label","设置"),16),value_w=text_width(val,16);
++   if(k)fill_rect(b,32,y,288,y+1,SH_BEACON_LINE);
++   if(title_w+value_w+16<=238){
++    sh_text(b,32,y+24,sh_str(it,"label","设置"),16,SH_TEXT,title_w+2);
++    sh_text(b,270-value_w,y+24,val,16,SH_MUTED,value_w+2);
++   }else{
++    sh_text(b,32,y+13,sh_str(it,"label","设置"),15,SH_TEXT,238);
++    sh_text(b,32,y+37,val,15,SH_MUTED,238);
++   }
++   if(interactive){sh_text(b,281,y+23,"›",18,SH_CYAN,14);hit_add(a,SH_BEACON_X0,y,SH_BEACON_X1,y+64,SH_ITEM+i);}
++  }
++  sh_page_footer(b,a,n);return;
++ }
+  if(!strcmp(s->section,"usage")){cJSON*usage=sh_get(sh_get(s->snapshot,"data"),"usage");char label[180],note[160];snprintf(label,sizeof(label),"设备估算 · %s",sh_usage_saved(usage));sh_text(b,16,53,label,14,SH_MUTED,288);sh_usage_note(usage,note,sizeof(note));sh_text(b,16,72,note,14,SH_MUTED,288);row_top=92;}
+  else sh_text(b,16,56,"轻点设置 · 上下滑动翻页",14,SH_MUTED,288);
+  for(int k=0;k<SH_PAGE_ITEMS&&first+k<n;k++){int i=first+k,y=row_top+k*72;
+@@ -539,6 +811,7 @@ static void shell_render(struct drm_buf*b,struct app*a){
+  struct panel_shell*s=&a->shell;const char*titles[]={"U60 Pro","网络","代理","组网","设置"};
+  s->scroll_offset=NULL;draw_clip_top=0;draw_clip_bottom=H;
+  if(s->tab<0||s->tab>4)s->tab=0;sh_background(b,0,0,320,480);hit_reset(a);
++ if(sh_theme==3&&s->locked&&!s->modal&&!s->editor&&!s->power_open){sh_beacon_lock(b,a,time(NULL));return;}
+  if(!s->subpage&&(s->tab==2||s->tab==3))sh_open_section(a,s->tab==2?"clash":"tailscale");
+  const char*title=s->subpage?sh_section_title(a,s->section,sh_section(a,s->section)):titles[s->tab];
+  int back=s->subpage;
+@@ -581,6 +854,7 @@ static void sh_save_form(struct app*a){
+ static int shell_hit(struct app*a,int id){
+  struct panel_shell*s=&a->shell;int i;
+  if(id<2000)return 0;
++ if(id==SH_UNLOCK){s->locked=0;return 1;}
+  if(s->busy&&s->draft&&!strcmp(sh_str(s->draft,"action",""),"wifi.relay.connect"))return 1;
+  if(id==SH_STATUS&&!s->modal&&!s->power_open){snprintf(s->message,sizeof(s->message),"%s",s->status);s->modal=3;s->status_until=0;return 1;}
+  if(s->power_open){if(id==SH_CANCEL)s->power_open=0;else if(id==SH_POWER_OFF||id==SH_POWER_REBOOT){s->power_open=0;shell_power(a,id==SH_POWER_REBOOT);}return 1;}
+diff --git a/panel/panel-theme.h b/panel/panel-theme.h
+index defc4c5..c13223d 100644
+--- a/panel/panel-theme.h
++++ b/panel/panel-theme.h
+@@ -7,10 +7,10 @@
+ #ifndef PANEL_THEME_FILE
+ #define PANEL_THEME_FILE "/data/u60-panel/theme"
+ #endif
+-#define PANEL_THEME_COUNT 3
+-static const char *panel_theme_key(int id){static const char*keys[]={"classic","paper","seaglass"};return id>=0&&id<PANEL_THEME_COUNT?keys[id]:keys[0];}
++#define PANEL_THEME_COUNT 4
++static const char *panel_theme_key(int id){static const char*keys[]={"classic","paper","seaglass","beacon"};return id>=0&&id<PANEL_THEME_COUNT?keys[id]:keys[0];}
+ static int panel_theme_id(const char *name){for(int i=0;name&&i<PANEL_THEME_COUNT;i++)if(!strcmp(name,panel_theme_key(i)))return i;return -1;}
+-static const char *panel_theme_name(int id){return id==2?"海雾玻璃":id==1?"纸白蓝":"曜石彩卡";}
++static const char *panel_theme_name(int id){return id==3?"原厂蓝白":id==2?"海雾玻璃":id==1?"纸白蓝":"曜石彩卡";}
+ static int panel_theme_load(void){
+  char b[24];FILE*f=fopen(PANEL_THEME_FILE,"r");if(!f)return 0;
+  size_t n=fread(b,1,sizeof(b)-1,f);int complete=feof(f);fclose(f);if(!complete)return 0;
+diff --git a/panel/panel-worker.h b/panel/panel-worker.h
+index 02fc207..437aa83 100644
+--- a/panel/panel-worker.h
++++ b/panel/panel-worker.h
+@@ -98,7 +98,10 @@ static void sample_local(struct app*a){
+  f=fopen("/proc/meminfo","r");if(f){char line[160];unsigned long total=0,avail=0;while(fgets(line,sizeof(line),f)){sscanf(line,"MemTotal: %lu",&total);sscanf(line,"MemAvailable: %lu",&avail);}if(total)live_num(d,"memory_percent",100.0*(total-avail)/total);fclose(f);}
+  char iface[64]="";f=fopen("/proc/net/route","r");if(f){char line[256];unsigned best=~0u;fgets(line,sizeof(line),f);while(fgets(line,sizeof(line),f)){char name[64];unsigned dest,gate,flags,metric;if(sscanf(line,"%63s %x %x %x %*u %*u %u",name,&dest,&gate,&flags,&metric)==5&&!dest&&(flags&1)&&metric<best&&strcmp(name,"tailscale0")&&strcmp(name,"lo")){strcpy(iface,name);best=metric;}}fclose(f);}
+  if(*iface){unsigned long long rx=0,tx=0;char path[160];snprintf(path,sizeof(path),"/sys/class/net/%s/statistics/rx_bytes",iface);f=fopen(path,"r");int valid=f&&fscanf(f,"%llu",&rx)==1;if(f)fclose(f);snprintf(path,sizeof(path),"/sys/class/net/%s/statistics/tx_bytes",iface);f=fopen(path,"r");valid=valid&&f&&fscanf(f,"%llu",&tx)==1;if(f)fclose(f);
+-  live_str(d,"physical_iface",iface);if(valid&&prev_ms&&n>prev_ms&&!strcmp(iface,old_iface)&&rx>=last_rx&&tx>=last_tx){live_num(d,"download_bps",(double)(rx-last_rx)*1000/(n-prev_ms));live_num(d,"upload_bps",(double)(tx-last_tx)*1000/(n-prev_ms));}else{cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");}last_rx=rx;last_tx=tx;snprintf(old_iface,sizeof(old_iface),"%s",iface);prev_ms=n;
++  live_str(d,"physical_iface",iface);if(valid&&prev_ms&&n>prev_ms&&!strcmp(iface,old_iface)&&rx>=last_rx&&tx>=last_tx){double rate=(double)(rx-last_rx)*1000/(n-prev_ms);live_num(d,"download_bps",rate);live_num(d,"upload_bps",(double)(tx-last_tx)*1000/(n-prev_ms));
++   if(a->rate_history_count<32)a->rate_history[a->rate_history_count++]=rate;
++   else {memmove(a->rate_history,a->rate_history+1,sizeof(a->rate_history)-sizeof(a->rate_history[0]));a->rate_history[31]=rate;}
++  }else{cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");}last_rx=rx;last_tx=tx;snprintf(old_iface,sizeof(old_iface),"%s",iface);prev_ms=n;
+  }
+  /* Clock is rendered from local time, independent of snapshot replacement. */
+ }
+diff --git a/panel/u60-panel.c b/panel/u60-panel.c
+index dad5899..c766d19 100644
+--- a/panel/u60-panel.c
++++ b/panel/u60-panel.c
+@@ -1149,6 +1149,8 @@ struct app {
+ 	int google_ms, checking_google, bl;
+ 	int quota_ok;
+ 	double quota_remain_gb, quota_total_gb;
++	double rate_history[32];
++	int rate_history_count;
+ 	time_t quota_expire, quota_fetched;
+ 	struct group groups[MAX_GROUPS];
+ 	int ngroups;
+diff --git a/tests/test-theme.c b/tests/test-theme.c
+index 64ce5be..9236887 100644
+--- a/tests/test-theme.c
++++ b/tests/test-theme.c
+@@ -10,9 +10,11 @@ int main(void){
+  assert(panel_theme_load()==0);assert(panel_theme_save("paper"));assert(panel_theme_load()==1);
+  assert(!panel_theme_save("amber"));assert(!panel_theme_save("../../bad"));assert(panel_theme_load()==1);
+  assert(panel_theme_save("seaglass"));assert(panel_theme_load()==2);
++ assert(panel_theme_save("beacon"));assert(panel_theme_load()==3);
+  assert(panel_theme_save("classic"));assert(panel_theme_load()==0);
+  FILE*f=fopen(path,"w");fputs("paperjunk",f);fclose(f);assert(panel_theme_load()==0);
+  assert(panel_theme_save("paper"));char tmp[512];snprintf(tmp,sizeof(tmp),"%s.next",path);assert(!symlink(path,tmp));assert(!panel_theme_save("classic"));assert(panel_theme_load()==1);unlink(tmp);
+- cJSON*i=panel_theme_item(1),*choices=cJSON_GetObjectItem(i,"choices");assert(cJSON_GetArraySize(choices)==3);assert(!strcmp(cJSON_GetObjectItem(i,"value")->valuestring,"纸白蓝"));assert(!strcmp(cJSON_GetObjectItem(i,"action")->valuestring,"screen.theme"));cJSON_Delete(i);
+- unlink(path);rmdir(dir);puts("PASS: theme persistence, three choices, rejected unknown/path, corrupt fallback, failed write retains saved theme");
++ cJSON*i=panel_theme_item(1),*choices=cJSON_GetObjectItem(i,"choices");assert(cJSON_GetArraySize(choices)==4);assert(!strcmp(cJSON_GetObjectItem(i,"value")->valuestring,"纸白蓝"));assert(!strcmp(cJSON_GetObjectItem(i,"action")->valuestring,"screen.theme"));cJSON_Delete(i);
++ i=panel_theme_item(3);assert(!strcmp(cJSON_GetObjectItem(i,"value")->valuestring,"原厂蓝白"));cJSON_Delete(i);
++ unlink(path);rmdir(dir);puts("PASS: theme persistence, four choices, rejected unknown/path, corrupt fallback, failed write retains saved theme");
+ }

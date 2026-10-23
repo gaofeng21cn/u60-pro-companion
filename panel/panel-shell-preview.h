@@ -7,9 +7,12 @@ static void shell_preview_fixture(struct app*a){
  cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"cell\",\"title\":\"蜂窝网络\",\"items\":[{\"id\":\"signal\",\"label\":\"信号格数\",\"type\":\"info\",\"value\":\"5\"}]}"));
  cJSON_AddItemToArray(sh_get(a->shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"network-control\",\"title\":\"终端网络\",\"items\":[{\"id\":\"network-status\",\"label\":\"网络能力\",\"type\":\"info\",\"value\":\"网页查看状态与启停\"},{\"id\":\"network-clients\",\"label\":\"连接设备\",\"type\":\"info\",\"value\":\"网页按 MAC 管理\"}]}"));
  cJSON*d=sh_get(a->shell.snapshot,"data");cJSON_AddNumberToObject(d,"cpu_percent",12.123456);cJSON_AddNumberToObject(d,"memory_percent",48.345678);cJSON_AddStringToObject(d,"network_profile","clash");cJSON_AddNumberToObject(d,"uptime_seconds",13320);cJSON_AddStringToObject(d,"clock_text","14:32");cJSON_AddStringToObject(d,"signal","-83 dBm");cJSON_AddStringToObject(d,"band","n78");cJSON_AddStringToObject(d,"physical_iface","蜂窝");cJSON_AddItemToObject(d,"clash",cJSON_Parse("{\"online\":true,\"mode\":\"rule\",\"node\":\"香港 · 优选 01\",\"upload\":127534254,\"download\":2132353321,\"quota_remaining\":180818123161,\"connections\":18}"));
+ cJSON_ReplaceItemInObject(d,"band",cJSON_CreateString("n78 · 20 MHz"));cJSON_AddStringToObject(d,"signal_detail","-94 dBm · SINR 23");
+ cJSON*usage=cJSON_AddObjectToObject(d,"usage");cJSON_AddBoolToObject(usage,"available",1);cJSON_AddBoolToObject(usage,"persisted",1);cJSON_AddBoolToObject(usage,"stored_ledger_exists",1);cJSON_AddNumberToObject(usage,"used_bytes",72209832263.0);cJSON_AddStringToObject(usage,"warning","normal");
+ a->rate_history_count=32;static const double rates[]={.22,.36,.31,.48,.45,.63,.52,.81,.72,.55,.67,.93,.76,.65,.88,.72,.57,.44,.61,.74,.53,.69,.85,.62,.51,.46,.64,.81,.73,.54,.77,.68};for(int i=0;i<32;i++)a->rate_history[i]=rates[i];
  cJSON_AddItemToObject(d,"auth_bypass",cJSON_Parse("{\"available\":true,\"enabled\":true,\"guard_running\":true,\"drift\":false,\"valid\":0,\"switch\":0}"));
 }
-static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++)assert(!(a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0));}}
+static void shell_preview_hits(struct app*a){int i,j;for(i=0;i<a->nhits;i++){assert(a->hits[i].id!=SH_REFRESH && a->hits[i].id!=SH_FIELD_PREV && a->hits[i].id!=SH_FIELD_NEXT);assert(a->hits[i].x0>=0&&a->hits[i].y0>=0&&a->hits[i].x1<=320&&a->hits[i].y1<=480);for(j=0;j<i;j++){int overlap=a->hits[i].x0<a->hits[j].x1&&a->hits[i].x1>a->hits[j].x0&&a->hits[i].y0<a->hits[j].y1&&a->hits[i].y1>a->hits[j].y0;if(overlap)fprintf(stderr,"overlap: [%d] id=%d (%d,%d,%d,%d) [%d] id=%d (%d,%d,%d,%d)\n",j,a->hits[j].id,a->hits[j].x0,a->hits[j].y0,a->hits[j].x1,a->hits[j].y1,i,a->hits[i].id,a->hits[i].x0,a->hits[i].y0,a->hits[i].x1,a->hits[i].y1);assert(!overlap);}}}
 static void shell_preview_write(struct drm_buf*b,const char*dir,int page){char path[1024];int i;snprintf(path,sizeof(path),"%s/shell-%02d.ppm",dir,page);FILE*f=fopen(path,"wb");assert(f);fprintf(f,"P6\n320 480\n255\n");for(i=0;i<320*480;i++){uint16_t p=b->map[i];unsigned char rgb[]={((p>>11)&31)*255/31,((p>>5)&63)*255/63,(p&31)*255/31};fwrite(rgb,1,3,f);}fclose(f);}
 static cJSON *shell_preview_large_choices(struct app*a){
  cJSON*it=cJSON_CreateObject();cJSON_AddStringToObject(it,"label","全部代理节点");cJSON_AddStringToObject(it,"type","choice");cJSON_AddStringToObject(it,"action","preview.select");cJSON_AddBoolToObject(it,"confirm",1);
@@ -137,6 +140,9 @@ static void shell_preview_battery_power(struct drm_buf*b,const char*dir){
 }
 static void shell_preview_live_regressions(struct drm_buf*b){
  struct app a;shell_preview_fixture(&a);cJSON*d=sh_get(a.shell.snapshot,"data"),*cl=sh_get(d,"clash");
+ /* These regions describe the classic home hierarchy. Beacon has its own
+  * layout and is checked separately below. */
+ sh_theme=0;
  cJSON_DeleteItemFromObject(d,"clash_status");cJSON_ReplaceItemInObject(cl,"online",cJSON_CreateBool(1));
  a.clash_online=1;shell_render(b,&a);uint16_t before[320*480];memcpy(before,b->map,sizeof(before));
  a.clash_online=0;shell_render(b,&a);int clash_ok=shell_preview_same_region(b,before,12,70,308,94);
@@ -151,13 +157,108 @@ static void shell_preview_live_regressions(struct drm_buf*b){
  cJSON*auth=sh_get(d,"auth_bypass");memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(auth,"guard_running",cJSON_CreateBool(0));shell_render(b,&a);assert(!shell_preview_same_region(b,before,190,70,308,94));cJSON_ReplaceItemInObject(auth,"guard_running",cJSON_CreateBool(1));assert(!strcmp(sh_auth_bypass_label(d),"终端默认放行"));
  char clock_buf[16];sh_clock_text(0,clock_buf,sizeof(clock_buf));assert(!strcmp(clock_buf,"--:--"));
  assert(text_width("100",14)<=28&&text_width("23:59",22)<=58);
- cJSON*usage=cJSON_AddObjectToObject(d,"usage");cJSON_AddStringToObject(usage,"warning","normal");shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("threshold"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,184,305,201));
+ cJSON*usage=sh_get(d,"usage");cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("normal"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));cJSON_ReplaceItemInObject(usage,"warning",cJSON_CreateString("threshold"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,184,305,201));
  /* Unknown SIM sampling cannot display an old cycle as current usage. The
   * snapshot also distinguishes an existing file from this sample being saved. */
- cJSON_AddBoolToObject(usage,"available",1);cJSON_AddBoolToObject(usage,"persisted",0);cJSON_AddBoolToObject(usage,"stored_ledger_exists",1);cJSON_AddNumberToObject(usage,"used_bytes",1500000000);assert(!strcmp(sh_usage_saved(usage),"已有存档 · 本次估算"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));
+ cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"persisted",cJSON_CreateBool(0));cJSON_ReplaceItemInObject(usage,"stored_ledger_exists",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"used_bytes",cJSON_CreateNumber(1500000000));assert(!strcmp(sh_usage_saved(usage),"已有存档 · 本次估算"));shell_render(b,&a);memcpy(before,b->map,sizeof(before));
  cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(0));assert(!strcmp(sh_usage_saved(usage),"读数未知 · 存档保留"));shell_render(b,&a);assert(!shell_preview_same_region(b,before,170,206,305,229));
  cJSON_ReplaceItemInObject(usage,"available",cJSON_CreateBool(1));cJSON_ReplaceItemInObject(usage,"persisted",cJSON_CreateBool(1));assert(!strcmp(sh_usage_saved(usage),"本次已保存"));
  sh_close(&a);cJSON_Delete(a.shell.snapshot);
+}
+static void shell_preview_beacon(struct drm_buf*b,const char*dir,int theme,int base){
+ struct app a;shell_preview_fixture(&a);sh_theme=theme;
+ a.shell.locked=1;shell_render(b,&a);shell_preview_hits(&a);
+ assert(a.nhits==1&&a.hits[0].id==SH_UNLOCK);
+ assert(a.hits[0].x0==0&&a.hits[0].y0==0&&a.hits[0].x1==320&&a.hits[0].y1==480);
+ shell_preview_write(b,dir,base);
+ shell_hit(&a,SH_UNLOCK);assert(!a.shell.locked);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+1);
+ /* The reported header/card collision must leave a visible blank band. */
+ for(int y=68;y<78;y++)for(int x=16;x<304;x++)assert(b->map[y*320+x]==SH_BG);
+ for(int i=0;i<a.nhits;i++)assert(a.hits[i].y1-a.hits[i].y0>=44);
+ a.shell.tab=4;a.shell.subpage=0;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+2);
+ int section_hit=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30)section_hit=1;assert(section_hit);
+ /* Supply a representative settings section so the detail screenshot shows
+   * real controls rather than the initial loading state. */
+ cJSON_AddItemToArray(sh_get(a.shell.snapshot,"sections"),cJSON_Parse("{\"id\":\"system\",\"title\":\"电源与屏幕\",\"items\":[{\"id\":\"theme\",\"label\":\"界面主题\",\"value\":\"深色\",\"type\":\"choice\",\"action\":\"screen.theme\",\"enabled\":true,\"choices\":[{\"label\":\"深色\",\"args\":{\"theme\":\"beacon\"}}]},{\"id\":\"brightness\",\"label\":\"屏幕亮度\",\"value\":\"中\",\"type\":\"choice\",\"action\":\"screen.brightness\",\"enabled\":true,\"choices\":[{\"label\":\"中\",\"args\":{\"value\":160}}]},{\"id\":\"blank\",\"label\":\"自动熄屏\",\"value\":\"2 分钟\",\"type\":\"choice\",\"action\":\"screen.blank\",\"enabled\":true,\"choices\":[{\"label\":\"2 分钟\",\"args\":{\"seconds\":120}}]},{\"id\":\"system.saver\",\"label\":\"原厂节能开关\",\"value\":\"已关闭\",\"type\":\"toggle\",\"action\":\"system.saver\",\"enabled\":true,\"args\":{\"enabled\":true}}]}"));
+ cJSON*system_items=sh_get(sh_section(&a,"system"),"items");cJSON_ReplaceItemInArray(system_items,0,panel_theme_item(theme));
+ shell_hit(&a,SH_SECTION);assert(!strcmp(a.shell.section,"system")&&a.shell.subpage);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+3);
+ shell_hit(&a,SH_BACK);assert(!a.shell.subpage);
+ a.shell.tab=1;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+4);
+ a.shell.tab=2;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+5);
+ a.shell.subpage=0;a.shell.tab=3;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+6);
+ a.shell.tab=1;sh_open_section(&a,"wifi");shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+7);
+ /* Keep absent telemetry visibly unknown in the redesigned home/lock. */
+ cJSON*d=sh_get(a.shell.snapshot,"data");cJSON_DeleteItemFromObject(d,"download_bps");cJSON_DeleteItemFromObject(d,"upload_bps");
+ cJSON_DeleteItemFromObject(d,"network");cJSON_DeleteItemFromObject(d,"band");cJSON_DeleteItemFromObject(d,"memory_percent");
+ cJSON_ReplaceItemInObject(sh_get(d,"usage"),"available",cJSON_CreateBool(0));
+ a.shell.subpage=0;a.shell.tab=0;a.rate_history_count=0;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+8);
+ a.shell.locked=1;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,base+9);
+ sh_theme=0;cJSON_Delete(a.shell.snapshot);
+ puts("PASS: stock dark lock, five tabs and details at 320x480; header clearance; unknown telemetry; targets >=44px");
+}
+static void shell_preview_motion(struct drm_buf*b,const char*dir){
+ struct app a;shell_preview_fixture(&a);sh_theme=3;
+ static struct panel_motion motion;
+ shell_render(b,&a);memcpy(motion.from,b->map,sizeof(motion.from));
+ /* Press feedback must precede any action, then disappear when a drag cancels
+  * the tap. It must not change the surrounding header or navigation. */
+ assert(shell_pointer(&a,60,130,1,0));assert(!a.shell.subpage&&!a.shell.busy);
+ shell_render(b,&a);shell_preview_write(b,dir,531);
+ assert(!shell_preview_same_region(b,motion.from,16,80,304,204));
+ assert(shell_preview_same_region(b,motion.from,0,0,320,80));
+ assert(shell_preview_same_region(b,motion.from,0,432,320,480));
+ assert(shell_pointer(&a,80,130,1,0));shell_render(b,&a);
+ assert(shell_preview_same_region(b,motion.from,0,0,320,480));
+ shell_pointer(&a,80,130,0,1);assert(!a.shell.subpage&&!a.shell.busy);
+ shell_pointer(&a,60,130,1,0);shell_pointer(&a,60,130,0,1);
+ assert(a.shell.subpage&&!strcmp(a.shell.section,"cell"));
+ a.shell.subpage=0;a.shell.section[0]=0;a.shell.tab=4;
+ shell_render(b,&a);memcpy(motion.to,b->map,sizeof(motion.to));
+ motion.direction=1;motion.axis=0;
+ for(int frame=0;frame<=10;frame++){
+  panel_motion_compose(&motion,b,frame*PANEL_MOTION_MS/10);
+  assert(shell_preview_same_region(b,motion.to,0,0,320,44));
+  assert(shell_preview_same_region(b,motion.to,0,432,320,480));
+  if(!frame)assert(shell_preview_same_region(b,motion.from,0,44,320,432));
+  if(frame==10)assert(shell_preview_same_region(b,motion.to,0,0,320,480));
+  shell_preview_write(b,dir,520+frame);
+ }
+ /* Both directions and both axes obey the real framebuffer pitch and do not
+  * touch row padding; only page content moves. */
+ static uint16_t padded[H*(W+4)];struct drm_buf pb={.map=padded,.pitch=(W+4)*2};
+ for(int axis=0;axis<2;axis++)for(int direction=-1;direction<=1;direction+=2){
+  motion.axis=axis;motion.direction=direction;
+  for(int i=0;i<H*(W+4);i++)padded[i]=0x55aa;
+  for(int elapsed=0;elapsed<=PANEL_MOTION_MS;elapsed+=16){
+   panel_motion_compose(&motion,&pb,elapsed);
+   for(int y=0;y<H;y++)for(int x=W;x<W+4;x++)assert(padded[y*(W+4)+x]==0x55aa);
+   for(int y=0;y<H;y++)for(int x=0;x<W;x++){
+    if(elapsed==PANEL_MOTION_MS||y<44||y>=432)assert(padded[y*(W+4)+x]==motion.to[y*W+x]);
+    else if(!elapsed)assert(padded[y*(W+4)+x]==motion.from[y*W+x]);
+   }
+  }
+ }
+ /* Exercise the actual rendering entry: navigation starts a finite motion,
+  * telemetry on the same view does not, and the final frame is exact. */
+ struct qpic_ctx preview={0};preview.bufs[0]=*b;memset(&panel_motion,0,sizeof(panel_motion));
+ a.shell.tab=0;render(&preview,&a);assert(!panel_motion.active);
+ shell_hit(&a,SH_TAB+4);render(&preview,&a);assert(panel_motion.active);
+ panel_motion.began=now_ms()-PANEL_MOTION_MS;render_motion(&preview);assert(!panel_motion.active);
+ assert(shell_preview_same_region(b,panel_motion.to,0,0,320,480));
+ render(&preview,&a);assert(!panel_motion.active);
+ /* Cached antialias masks and metrics match the original rasterizer. */
+ const uint32_t codepoints[]={0x4e2d,0x56fd,'8',':',' '};
+ for(size_t i=0;i<sizeof(codepoints)/sizeof(codepoints[0]);i++){
+  struct panel_glyph*g=font_glyph(codepoints[i],20);unsigned char*cached=g->mask;
+  assert(font_glyph(codepoints[i],20)->mask==cached);
+  int w,h,x,y;float scale=stbtt_ScaleForPixelHeight(&g_font,20);
+  unsigned char*reference=stbtt_GetCodepointBitmap(&g_font,scale,scale,(int)codepoints[i],&w,&h,&x,&y);
+  assert(g->w==w&&g->h==h&&g->x==x&&g->y==y);
+  if(reference)assert(g->mask&&!memcmp(reference,g->mask,(size_t)w*h));
+  stbtt_FreeBitmap(reference,NULL);
+ }
+ sh_theme=0;cJSON_Delete(a.shell.snapshot);memset(&panel_motion,0,sizeof(panel_motion));
+ puts("PASS: press-before-action, drag cancels press/tap, bounded navigation motion, fixed chrome, padded pitch, exact final frames and cached glyph masks");
 }
 static void shell_preview_reports(struct drm_buf*b,const char*dir){
  struct app a;shell_preview_fixture(&a);a.shell.tab=4;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,20);
@@ -271,15 +372,17 @@ static void shell_preview_scroll_gestures(struct drm_buf*b,const char*dir){
  assert(a.shell.menu_page==SH_PAGE_OFFSET&&!a.shell.subpage&&!a.shell.modal&&!a.shell.busy);shell_preview_hits(&a);
  assert(shell_preview_same_region(b,before,0,432,320,480));assert(shell_preview_same_region(b,before,198,0,320,44));
  /* All four rows remain complete, and a swipe cannot become an action. */
- int rows=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30){assert(a.hits[i].y0>=80&&a.hits[i].y1<=353&&a.hits[i].y1-a.hits[i].y0==57);rows++;}assert(rows==4);
+ int rows=0;for(int i=0;i<a.nhits;i++)if(a.hits[i].id>=SH_SECTION&&a.hits[i].id<SH_SECTION+30){assert(a.hits[i].y0>=78&&a.hits[i].y1<=426);assert(sh_new_theme()?(a.hits[i].y1-a.hits[i].y0>=44):(a.hits[i].y1-a.hits[i].y0==57));rows++;}assert(rows==(sh_new_theme()?6:4));
  shell_preview_write(b,dir,200+theme);
  int old=a.shell.menu_page;shell_pointer(&a,130,20,1,0);shell_pointer(&a,130,200,1,0);shell_pointer(&a,130,200,0,1);assert(a.shell.menu_page==old);
  shell_hit(&a,SH_TAB+1);shell_render(b,&a);shell_hit(&a,SH_TAB+4);shell_render(b,&a);assert(a.shell.menu_page==old);
  /* Daily eSIM is on the first page, and advanced/recovery remain reachable
   * with their original action identities after the display order changes. */
  shell_hit(&a,SH_PREV);shell_render(b,&a);assert(a.shell.menu_page==0);int esim_hit=0;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_SECTION+8)esim_hit++;assert(esim_hit==1);
- shell_pointer(&a,150,325,1,0);shell_pointer(&a,150,325,0,1);assert(!strcmp(a.shell.section,"esim")&&a.shell.subpage&&!a.shell.busy);shell_render(b,&a);shell_hit(&a,SH_BACK);shell_render(b,&a);assert(!a.shell.subpage&&a.shell.menu_page==0);
- shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==2*SH_PAGE_OFFSET);int diagnostic=0,recovery=0,next=0;for(int h=0;h<a.nhits;h++){diagnostic+=a.hits[h].id==SH_SECTION+7;recovery+=a.hits[h].id==SH_FACTORY;next+=a.hits[h].id==SH_NEXT;}assert(diagnostic==1&&recovery==1&&next==0);shell_preview_hits(&a);shell_preview_write(b,dir,203+theme);
+ int esim_row=-1;for(int h=0;h<a.nhits;h++)if(a.hits[h].id==SH_SECTION+8)esim_row=h;assert(esim_row>=0);shell_hit(&a,SH_SECTION+8);assert(!strcmp(a.shell.section,"esim")&&a.shell.subpage&&!a.shell.busy);shell_render(b,&a);shell_hit(&a,SH_BACK);shell_render(b,&a);assert(!a.shell.subpage&&a.shell.menu_page==0);
+ if(sh_new_theme()){shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==SH_PAGE_OFFSET);}
+ else {shell_hit(&a,SH_NEXT);shell_render(b,&a);shell_hit(&a,SH_NEXT);shell_render(b,&a);assert(a.shell.menu_page==2*SH_PAGE_OFFSET);}
+ int diagnostic=0,recovery=0,next=0;for(int h=0;h<a.nhits;h++){diagnostic+=a.hits[h].id==SH_SECTION+7;recovery+=a.hits[h].id==SH_FACTORY;next+=a.hits[h].id==SH_NEXT;}assert(diagnostic==1&&recovery==1&&next==0);shell_preview_hits(&a);shell_preview_write(b,dir,203+theme);
  /* The terminal-auth bypass page is appended last so every earlier page id
   * stays stable; it opens as its own page and is distinct from the factory
   * row that closes the list. */
@@ -345,7 +448,7 @@ static int shell_preview_main(const char*dir){
  for(size_t t=0;t<sizeof(invalid)/sizeof(invalid[0]);t++){char*owned=strdup(invalid[t]);const char*q=owned;while(*q){const char*before=q;assert(utf8_next(&q)==0x3f);assert(q>before&&q<=owned+strlen(owned));}free(owned);}
  const char*q="中";assert(utf8_next(&q)==0x4e2d&&!*q);
  if(font_load()<0)return 1;b.pitch=640;b.size=320*480*2;b.map=calloc(320*480,2);
- shell_preview_live_regressions(&b);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
+ shell_preview_live_regressions(&b);shell_preview_beacon(&b,dir,3,500);shell_preview_beacon(&b,dir,1,510);shell_preview_motion(&b,dir);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
  for(page=0;page<15;page++){
   shell_preview_fixture(&a);
   if(page<5)a.shell.tab=page;
