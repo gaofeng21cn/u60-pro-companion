@@ -23,7 +23,7 @@ macOS/Linux 使用终端；Windows 可用 Python 3 与 `adb.exe`，Windows 完�
 
 ### 从本仓库源码构建
 
-可下载本仓库 [v0.1.16-experimental 安装包](https://github.com/gaofeng21cn/u60-pro-enhanced/releases/tag/v0.1.16-experimental)，下载用户不需要编译器。以下是开发者构建方式。构建依赖 Zig 0.14.1、Go、Python 3、Rust 1.87+ 和 Git，主机测试还需 C 编译器和 Node.js。**请显式使用 Zig 0.14.1**：0.16 会构建失败。
+可下载本仓库 [v0.1.16-experimental 安装包](https://github.com/gaofeng21cn/u60-pro-enhanced/releases/tag/v0.1.16-experimental)，下载用户不需要编译器。当前主线下一预览包为 `v0.2.0-companion-preview`，尚未作为公开 Release 发布。以下是开发者构建方式。构建依赖 Zig 0.14.1、Go、Python 3、Rust 1.87+ 和 Git，主机测试还需 C 编译器和 Node.js。**请显式使用 Zig 0.14.1**：0.16 会构建失败。
 
 ```sh
 rustup target add aarch64-unknown-linux-musl
@@ -38,14 +38,14 @@ python3 scripts/package.py
 
 下载本仓库 Release 附件中的 tar.gz 与 SHA256SUMS.txt，校验后解压。不要下载自动生成的 Source code 作为安装材料；上游 B28 安装包不能用于 B31。
 
-源码当前默认打包为 `v0.1.16-esim-candidate`，包含尚未实机验收的 eSIM 能力。不要把该候选包与已有同版本公开包或已安装设备状态混同。先停止卡片操作再升级；升级器拒绝替换仍在运行的 eSIM 作业。详情见 [ESIM.md](ESIM.md)。
+源码当前默认打包为 `v0.2.0-companion-preview`，包含尚未实机验收的 eSIM 能力。不要把该预览包与已有公开 Release 或已安装设备状态混同。先停止卡片操作再升级；升级器拒绝替换仍在运行的 eSIM 作业。详情见 [ESIM.md](ESIM.md)。
 
 ## 准备（只读设备）
 
 先进入安装包目录。本仓库构建产物位于 `dist/u60-pro-enhanced-<版本>/`（构建后可用 `ls dist/` 查看实际目录名），使用上游 Release 时就是解压出来的同名目录。
 
 ```sh
-cd dist/u60-pro-enhanced-v0.1.16-experimental
+cd dist/u60-pro-enhanced-v0.2.0-companion-preview
 python3 prepare.py
 ```
 

@@ -1,6 +1,6 @@
 # eSIM：可插拔 eUICC 候选能力
 
-源码提供国行 B31（`BD_CNMU5250V1.0.0B31`）的可插拔 eUICC 管理，范围包括 9eSIM、5ber、eSTK.me 等，优先用用户现有 eSTK.me 实机验收。现有公开 `v0.1.16-experimental` 不含该功能，本地候选包名为 `v0.1.16-esim-candidate`。当前尚未安装或完成真实卡片验收。
+当前主线提供国行 B31（`BD_CNMU5250V1.0.0B31`）的可插拔 eUICC 管理，范围包括 9eSIM、5ber、eSTK.me 等，优先用用户现有 eSTK.me 实机验收。公开最新 `v0.1.16-experimental` 不含该功能；下一预览包名为 `v0.2.0-companion-preview`。当前尚未安装或完成真实卡片验收。
 
 ## 使用
 
