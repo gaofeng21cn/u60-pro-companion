@@ -16,7 +16,7 @@ struct panel_shell {
  char status[160]; /* optional root operation result/status */
  char section[32];
  int modal, editor, field, key_page, shift, reveal, power_open;
- int locked; /* Beacon candidate's lock screen is UI-only; it is not device security. */
+ int locked; /* Visual lock only; it does not authenticate or restrict device access. */
  cJSON *draft; /* owned deep copy; never replaced by background refresh */
  cJSON *pending_args;
  int nfields;
@@ -26,6 +26,15 @@ struct panel_shell {
  char message[256];
 };
 struct app;
+static void panel_screen_lock_initial(struct panel_shell *s,int supported){
+ s->locked=!!supported;
+}
+static void panel_screen_lock_wake(struct panel_shell *s,int was_blanked,int supported){
+ if(was_blanked&&supported)s->locked=1;
+}
+static void panel_screen_lock_unlock(struct panel_shell *s){
+ s->locked=0;
+}
 /* Dispatch borrows args; copy synchronously before asynchronous execution. */
 static void shell_dispatch(struct app *,const char *,cJSON *);
 static void shell_request_refresh(struct app *);

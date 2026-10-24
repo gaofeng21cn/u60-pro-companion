@@ -1,6 +1,6 @@
 # 当前产品基线
 
-产品：U60 Pro Companion。当前版本：`v0.2.0-companion`。目标设备：国行 B31（`BD_CNMU5250V1.0.0B31`）。
+产品：U60 Pro Companion。当前版本：`v0.2.1-companion`。目标设备：国行 B31（`BD_CNMU5250V1.0.0B31`）。
 
 ## 已交付能力
 

@@ -2195,6 +2195,7 @@ static void handle_hit(struct app *a, int id)
 static int ui_main(void) {
  long startup=now_ms(),release_started,font_done,drm_done;int status=0, snapshot_logged=0;
  struct qpic_ctx drm;struct touch_dev touch;struct app app;memset(&app,0,sizeof(app));app.bat=-1;
+ sh_theme=panel_theme_load();panel_screen_lock_initial(&app.shell,sh_new_theme());
  signal(SIGPIPE,SIG_IGN);signal(SIGINT,on_sig);signal(SIGTERM,on_sig);signal(SIGUSR1,on_wake);signal(SIGHUP,on_power);
  if(font_load()<0)return 1;font_done=now_ms();
  if(drm_init(&drm)<0)return 1;drm_done=now_ms();
@@ -2209,8 +2210,8 @@ static int ui_main(void) {
  struct panel_touch_gate touch_gate={0};
  int need=0;while(!g_stop){
   int was_blanked=app.blanked;
-  if(g_wake){g_wake=0;last_input=now_ms();if(app.blanked)screen_unblank(&app);else screen_blank(&app);need=1;}
-  if(g_power){g_power=0;last_input=now_ms();screen_unblank(&app);app.shell.power_open=1;logline("power menu opened");need=1;}
+  if(g_wake){g_wake=0;last_input=now_ms();if(app.blanked)screen_unblank(&app);else screen_blank(&app);panel_screen_lock_wake(&app.shell,was_blanked&&!app.blanked,sh_new_theme());need=1;}
+  if(g_power){g_power=0;last_input=now_ms();screen_unblank(&app);panel_screen_lock_wake(&app.shell,was_blanked&&!app.blanked,sh_new_theme());app.shell.power_open=1;logline("power menu opened");need=1;}
   if(was_blanked&&!app.blanked)next_snapshot=0;
   if(app.blanked)panel_motion.active=0;
   /* Input and helper completion wake the loop immediately. An idle screen

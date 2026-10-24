@@ -886,7 +886,7 @@ static void sh_save_form(struct app*a){
 static int shell_hit(struct app*a,int id){
  struct panel_shell*s=&a->shell;int i;
  if(id<2000)return 0;
- if(id==SH_UNLOCK){s->locked=0;return 1;}
+ if(id==SH_UNLOCK){panel_screen_lock_unlock(s);return 1;}
  if(s->busy&&s->draft&&!strcmp(sh_str(s->draft,"action",""),"wifi.relay.connect"))return 1;
  if(id==SH_STATUS&&!s->modal&&!s->power_open){snprintf(s->message,sizeof(s->message),"%s",s->status);s->modal=3;s->status_until=0;return 1;}
  if(s->power_open){if(id==SH_CANCEL)s->power_open=0;else if(id==SH_POWER_OFF||id==SH_POWER_REBOOT){s->power_open=0;shell_power(a,id==SH_POWER_REBOOT);}return 1;}
