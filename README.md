@@ -2,7 +2,7 @@
 
 U60 Pro Companion 是中兴 U60 Pro（MU5250）国行 B28 / B31 的增强伴侣系统：保留原厂固件、原厂网页和 ADB，同时把小屏状态、网络控制、代理、组网、套餐台账和设备维护整合到一套体验里。
 
-当前版本：[v0.2.1-companion](https://github.com/gaofeng21cn/u60-pro-companion/releases/tag/v0.2.1-companion)。这是在多个开源项目基础上独立维护的产品版本，安装包、文档和设备端控制器由本仓库统一维护。
+当前版本：[v0.2.2-companion](https://github.com/gaofeng21cn/u60-pro-companion/releases/tag/v0.2.2-companion)。这是在多个开源项目基础上独立维护的产品版本，安装包、文档和设备端控制器由本仓库统一维护。
 
 ## 界面预览
 
@@ -34,12 +34,12 @@ U60 Pro Companion 是中兴 U60 Pro（MU5250）国行 B28 / B31 的增强伴侣�
 
 1. 用 USB 数据线把 U60 Pro 连接到电脑，启用 root ADB，并确认电脑已经安装 Python 3 和 Google Android Platform Tools。
 2. 让你使用的 Agent 在 GitHub 搜索 [`gaofeng21cn/u60-pro-companion`](https://github.com/gaofeng21cn/u60-pro-companion)，阅读本 README 和[安装说明](docs/INSTALL.md)，为当前设备生成绑定材料并执行安装。
-3. 也可以直接下载 [v0.2.1-companion 安装包](https://github.com/gaofeng21cn/u60-pro-companion/releases/tag/v0.2.1-companion)后手动执行：
+3. 也可以直接下载 [v0.2.2-companion 安装包](https://github.com/gaofeng21cn/u60-pro-companion/releases/tag/v0.2.2-companion)后手动执行：
 
 ```sh
 shasum -a 256 -c SHA256SUMS.txt
-tar -xzf u60-pro-enhanced-v0.2.1-companion.tar.gz
-cd u60-pro-enhanced-v0.2.1-companion
+tar -xzf u60-pro-enhanced-v0.2.2-companion.tar.gz
+cd u60-pro-enhanced-v0.2.2-companion
 adb devices
 python3 prepare.py
 cd ../u60-prepared-private
@@ -76,7 +76,7 @@ sh scripts/test.sh
 python3 scripts/package.py
 ```
 
-默认产物为 `dist/u60-pro-enhanced-v0.2.1-companion/` 及同名压缩包。源码、主机测试、设备安装和真实业务验收分别记录在[产品基线](docs/BASELINE.md)、[验证范围](docs/VALIDATION.md)和主题文档中。
+默认产物为 `dist/u60-pro-enhanced-v0.2.2-companion/` 及同名压缩包。源码、主机测试、设备安装和真实业务验收分别记录在[产品基线](docs/BASELINE.md)、[验证范围](docs/VALIDATION.md)和主题文档中。
 
 ## 来源与许可
 

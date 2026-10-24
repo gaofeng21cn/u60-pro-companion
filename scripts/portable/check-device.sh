@@ -25,7 +25,17 @@ done
 [ "$(cat /sys/class/input/event0/device/name)" = pmic_pwrkey ] || fail 'Power key layout mismatch'
 [ "$(cat /sys/class/input/event3/device/name)" = sitronix_ts_i2c ] || fail 'Touch input layout mismatch'
 [ -x /etc/init.d/zte_topsw_devui ] && [ -s /etc/rc.local ] || fail 'Factory UI/boot file missing'
-[ "$(cat /sys/class/power_supply/usb/online)" = 1 ] || fail 'Keep a USB cable connected for installation'
+# Power delivery and USB data enumeration are separate facts. A configured UDC
+# proves the maintenance data link is present even when the device is drawing
+# no charge current; retain the power-supply check for older firmware layouts.
+USB_READY=0
+for state_file in /sys/class/android_usb/android0/state /sys/class/udc/*/state;do
+ [ -f "$state_file" ] || continue
+ case "$(cat "$state_file" 2>/dev/null || true)" in CONFIGURED|configured) USB_READY=1;; esac
+done
+if [ "$USB_READY" = 0 ];then
+ [ "$(cat /sys/class/power_supply/usb/online 2>/dev/null || true)" = 1 ] || fail 'Keep a USB cable connected for installation'
+fi
 [ ! -e /sys/class/net/eth0 ] || fail 'Remove the USB Ethernet adapter before installation'
 FREE=$(df -k /data | awk 'END {print $(NF-2)}')
 case "$FREE" in ''|*[!0-9]*) fail 'Cannot read available data space';; esac

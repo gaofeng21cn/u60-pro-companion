@@ -16,10 +16,12 @@ class PortableInstall(unittest.TestCase):
   self.tmp=tempfile.TemporaryDirectory(prefix='u60-portable-');self.root=pathlib.Path(self.tmp.name)
   self.target=self.root/'device';self.pkg=self.root/'package';self.tools=self.root/'tools'
   for p in [self.target,self.pkg,self.tools]:p.mkdir()
-  for d in ['data','etc/init.d','etc/rc.d','sys/class/input/event0/device','sys/class/input/event3/device','sys/class/power_supply/usb','sys/class/net','dev/dri','dev/net']:(self.target/d).mkdir(parents=True,exist_ok=True)
+  for d in ['data','etc/init.d','etc/rc.d','sys/class/input/event0/device','sys/class/input/event3/device','sys/class/power_supply/usb','sys/class/android_usb/android0','sys/class/udc/test-udc','sys/class/net','dev/dri','dev/net']:(self.target/d).mkdir(parents=True,exist_ok=True)
   self.put(self.target/'sys/class/input/event0/device/name','pmic_pwrkey\n')
   self.put(self.target/'sys/class/input/event3/device/name','sitronix_ts_i2c\n')
   self.put(self.target/'sys/class/power_supply/usb/online','1\n')
+  self.put(self.target/'sys/class/android_usb/android0/state','CONFIGURED\n')
+  self.put(self.target/'sys/class/udc/test-udc/state','configured\n')
   for p in ['dev/dri/card0','dev/net/tun']:(self.target/p).symlink_to('/dev/null')
   self.put(self.target/'etc/init.d/zte_topsw_devui','#!/bin/sh\nexit 0\n')
   self.oldrc='#!/bin/sh\n# factory preserved\necho factory\nexit 0\n'
@@ -121,7 +123,9 @@ exec /bin/mv "$@"
  def test_mismatched_firmware_rejected_before_write(self):
   r=self.run_install('--install',env=dict(self.env,FAKE_FW='B27'));self.assertNotEqual(r.returncode,0);self.assert_stock()
  def test_usb_disconnected_rejected_before_write(self):
-  (self.target/'sys/class/power_supply/usb/online').write_text('0\n');r=self.run_install('--install');self.assertNotEqual(r.returncode,0);self.assert_stock()
+  (self.target/'sys/class/power_supply/usb/online').write_text('0\n');(self.target/'sys/class/android_usb/android0/state').write_text('NOT ATTACHED\n');(self.target/'sys/class/udc/test-udc/state').write_text('not attached\n');r=self.run_install('--install');self.assertNotEqual(r.returncode,0);self.assert_stock()
+ def test_configured_usb_data_link_is_ready_without_charge_power(self):
+  (self.target/'sys/class/power_supply/usb/online').write_text('0\n');r=self.run_install();self.assertEqual(r.returncode,0,r.stderr);self.assert_stock()
  def test_existing_identity_directory_refuses_overwrite(self):
   (self.target/'data/tailscale').mkdir();(self.target/'data/tailscale/tailscaled.state').write_text('SYNTHETIC-IDENTITY')
   r=self.run_install('--install');self.assertNotEqual(r.returncode,0);self.assert_stock();self.assertEqual((self.target/'data/tailscale/tailscaled.state').read_text(),'SYNTHETIC-IDENTITY')

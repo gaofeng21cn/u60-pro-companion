@@ -45,11 +45,14 @@ class PortableUpgrade(unittest.TestCase):
         for d in ['data', 'data/u60-web/public/js', 'etc/init.d', 'etc/rc.d',
                   'sys/class/input/event0/device',
                   'sys/class/input/event3/device', 'sys/class/power_supply/usb',
+                  'sys/class/android_usb/android0', 'sys/class/udc/test-udc',
                   'sys/class/net', 'dev/dri', 'dev/net']:
             (self.target / d).mkdir(parents=True, exist_ok=True)
         self.put(self.target / 'sys/class/input/event0/device/name', 'pmic_pwrkey\n')
         self.put(self.target / 'sys/class/input/event3/device/name', 'sitronix_ts_i2c\n')
         self.put(self.target / 'sys/class/power_supply/usb/online', '1\n')
+        self.put(self.target / 'sys/class/android_usb/android0/state', 'CONFIGURED\n')
+        self.put(self.target / 'sys/class/udc/test-udc/state', 'configured\n')
         for p in ['dev/dri/card0', 'dev/net/tun']:
             (self.target / p).symlink_to('/dev/null')
         self.put(self.target / 'etc/init.d/zte_topsw_devui', '#!/bin/sh\nexit 0\n')
