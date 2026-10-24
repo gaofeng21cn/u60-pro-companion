@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Package only reviewed project files; no device backups or credentials."""
-import argparse,hashlib,importlib.util,pathlib,re,shutil,tarfile
+import argparse,hashlib,importlib.util,pathlib,re,shutil,subprocess,tarfile
 R=pathlib.Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('prepare',R/'scripts/prepare.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 parser=argparse.ArgumentParser(description=__doc__)
@@ -15,7 +15,17 @@ for n in ['prepare.py']:shutil.copyfile(R/'scripts'/n,out/n)
 for n in ['dependencies.json','factory-web.sha256','factory-web-B31.sha256','FACTORY-SHA256SUMS','FACTORY-SHA256SUMS-B31']:shutil.copyfile(R/'packaging'/n,out/n)
 shutil.copyfile(R/'README.md',out/'README.md')
 shutil.copytree(R/'docs',out/'docs');shutil.copytree(R/'licenses',out/'licenses')
-shutil.copytree(R/'release-assets',out/'release-assets')
+release_assets=out/'release-assets'
+release_assets.mkdir()
+for f in (R/'release-assets').rglob('*'):
+ if not f.is_file():continue
+ rel=f.relative_to(R/'release-assets')
+ # A maintainer's uncommitted copy must not leak into a public artifact.
+ tracked=subprocess.run(['git','ls-files','--error-unmatch','--',str(f.relative_to(R))],cwd=R,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+ if not tracked:raise SystemExit('Untracked release asset: '+rel.as_posix())
+ committed=subprocess.run(['git','show','HEAD:'+f.relative_to(R).as_posix()],cwd=R,check=True,stdout=subprocess.PIPE).stdout
+ (release_assets/rel).parent.mkdir(parents=True,exist_ok=True)
+ (release_assets/rel).write_bytes(committed)
 # Include the exact patched lpac source and reproducible build recipe with
 # its binary; no runtime install step downloads unreviewed eSIM code.
 source=out/'source';source.mkdir()
