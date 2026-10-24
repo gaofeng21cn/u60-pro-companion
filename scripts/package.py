@@ -4,7 +4,7 @@ import argparse,hashlib,importlib.util,pathlib,re,shutil,tarfile
 R=pathlib.Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('prepare',R/'scripts/prepare.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--version',default='v0.2.0-companion-preview')
+parser.add_argument('--version',default='v0.2.0-companion')
 args=parser.parse_args()
 VERSION=args.version
 if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9-]+',VERSION):raise SystemExit('Invalid package version')
@@ -15,6 +15,7 @@ for n in ['prepare.py']:shutil.copyfile(R/'scripts'/n,out/n)
 for n in ['dependencies.json','factory-web.sha256','factory-web-B31.sha256','FACTORY-SHA256SUMS','FACTORY-SHA256SUMS-B31']:shutil.copyfile(R/'packaging'/n,out/n)
 shutil.copyfile(R/'README.md',out/'README.md')
 shutil.copytree(R/'docs',out/'docs');shutil.copytree(R/'licenses',out/'licenses')
+shutil.copytree(R/'release-assets',out/'release-assets')
 # Include the exact patched lpac source and reproducible build recipe with
 # its binary; no runtime install step downloads unreviewed eSIM code.
 source=out/'source';source.mkdir()
