@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "opl-u60-connector",
+  "version": "0.1.0",
+  "description": "Read device-bound U60 Pro Companion status and bounded network diagnostics.",
+  "author": {
+    "name": "OPL"
+  },
+  "repository": "https://github.com/gaofeng21cn/u60-pro-companion",
+  "license": "GPL-3.0",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "U60 Pro Companion",
+        "shortDescription": "Read-only U60 status and diagnostics.",
+        "developerName": "OPL",
+        "category": "Productivity"
+      }
+    }
+  }
+}

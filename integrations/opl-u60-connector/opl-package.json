@@ -1,0 +1,133 @@
+{
+  "surface_kind": "opl_capability_package_manifest.v2",
+  "package_id": "opl-u60-connector",
+  "display_name": "OPL U60 Companion Connector",
+  "publisher": "gaofeng21cn",
+  "version": "0.1.0",
+  "source": "first_party_repo_local",
+  "source_repo": "https://github.com/gaofeng21cn/u60-pro-companion.git",
+  "package_role": "capability_package",
+  "publication_channel_admission": "development_only",
+  "schema_ref": "one-person-lab/contracts/opl-framework/capability-package-manifest.schema.json",
+  "capability_abi": {
+    "id": "u60.companion.v1",
+    "version": "1.0.0",
+    "compatibility_policy": "same_major"
+  },
+  "exports": {
+    "core_skill_ids": [
+      "opl-u60-connector"
+    ],
+    "core_module_ids": [
+      "u60.companion.v1"
+    ],
+    "optional_skill_policy_ref": "skills/opl-u60-connector/SKILL.md",
+    "optional_skills_installed_by_default": false
+  },
+  "codex_surface": {
+    "plugin_id": "opl-u60-connector",
+    "plugin_source_path": ".",
+    "codex_default_exposure": false,
+    "optional_install_policy": "core_skills_only",
+    "interaction_mode": "headless_internal",
+    "configured_codex_plugin_carrier": {
+      "kind": "codex_plugin_manager",
+      "plugin_selector": "opl-u60-connector@u60-pro-companion",
+      "executor_route": "codex_cli",
+      "marketplace_source": "gaofeng21cn/u60-pro-companion",
+      "publication_ref": null
+    },
+    "app_contribution_abi": {
+      "schema_version": "opl-package-app-contribution-cli.v1",
+      "transport": "stdin_json_stdout_json",
+      "argv": [
+        "opl",
+        "app",
+        "contribution",
+        "adapter",
+        "--stdin"
+      ],
+      "request_schema": "opl-package-app-contribution-request.v1",
+      "response_schema": "opl-package-app-contribution-response.v1"
+    },
+    "app_contribution_adapter": {
+      "manifest": "app-contribution-adapter.json"
+    }
+  },
+  "app_contributions": {
+    "schema_version": "opl-app-contributions.v1",
+    "views": [
+      {
+        "view_id": "u60.status",
+        "view_type": "service_status",
+        "title_i18n": {
+          "zh-CN": "U60 Pro 状态",
+          "en-US": "U60 Pro status"
+        },
+        "data_ref": "u60.companion.v1#status",
+        "command_ids": [],
+        "empty_state_i18n": {
+          "zh-CN": "没有可读取的 U60 设备",
+          "en-US": "No U60 device status is available"
+        }
+      },
+      {
+        "view_id": "u60.diagnostics",
+        "view_type": "list_detail",
+        "title_i18n": {
+          "zh-CN": "U60 网络诊断",
+          "en-US": "U60 network diagnostics"
+        },
+        "data_ref": "u60.companion.v1#diagnostics",
+        "command_ids": [],
+        "empty_state_i18n": {
+          "zh-CN": "尚未读取 U60 网络诊断",
+          "en-US": "U60 diagnostics have not been read"
+        }
+      }
+    ],
+    "commands": [],
+    "badges": [],
+    "ui": [
+      {
+        "contribution_id": "u60.status",
+        "slot": "settings.section",
+        "contribution_kind": "view",
+        "trust_tier": "declarative",
+        "scope": "root",
+        "sort_order": 920,
+        "view_id": "u60.status"
+      },
+      {
+        "contribution_id": "u60.diagnostics",
+        "slot": "settings.section",
+        "contribution_kind": "view",
+        "trust_tier": "declarative",
+        "scope": "root",
+        "sort_order": 921,
+        "view_id": "u60.diagnostics"
+      }
+    ]
+  },
+  "authority_boundary": {
+    "domain_truth_owner": "u60-pro-companion/panel-control",
+    "device_identity_owner": "u60-pro-companion/deploy",
+    "device_control_owner": "u60-pro-companion",
+    "projection_can_control_device": false,
+    "projection_can_authorize_input": false,
+    "credential_owner": "u60-pro-companion/factory-auth"
+  },
+  "content_lock": {
+    "algorithm": "sha256",
+    "canonicalization": "ordered_path_length_file_length_bytes",
+    "paths": [
+      ".codex-plugin/plugin.json",
+      "app-contribution-adapter.json",
+      "connector.py",
+      "plugin.json",
+      "README.md",
+      "skills/opl-u60-connector/SKILL.md"
+    ],
+    "digest": "sha256:6e5300cdc9b5ce1b0b9829741db2282219b963f1bea4a22add8bff5e416a5e81"
+  }
+}

@@ -59,6 +59,8 @@ python3 deploy-from-computer.py upgrade
 
 ## 适配设备
 
+已安装设备可通过可选 [Agent 只读入口](docs/AGENT.md) 查询状态和网络诊断，并交接到原厂登录网页；设置与恢复仍走原有设备控制流程。
+
 | 固件 | 设备标识 | 内核 |
 |---|---|---|
 | 国行 B28 | `BD_FLYMODEMMU5250V1.0.0B28` | `5.15.185-perf` |

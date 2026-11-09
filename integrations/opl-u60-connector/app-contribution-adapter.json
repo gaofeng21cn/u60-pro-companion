@@ -1,0 +1,48 @@
+{
+  "schema_version": "opl-package-app-contribution-adapter.v1",
+  "reads": {
+    "u60.companion.v1#status": {
+      "kind": "command",
+      "cwd": "package",
+      "argv": [
+        "python3",
+        "connector.py",
+        "status"
+      ],
+      "stdin": "input_json",
+      "passthrough": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expected_identity_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "u60.companion.v1#diagnostics": {
+      "kind": "command",
+      "cwd": "package",
+      "argv": [
+        "python3",
+        "connector.py",
+        "diagnostics"
+      ],
+      "stdin": "input_json",
+      "passthrough": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expected_identity_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "actions": {}
+}
