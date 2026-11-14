@@ -70,6 +70,9 @@ python3 deploy-from-computer.py upgrade
 
 ## 从源码构建
 
+主线交付变化由 OPL 每日任务准备版本，CI 自动生成经过主机回归的 ARM64 候选。
+正式发布继续要求同一归档的实机验收回执，流程见[自动候选与正式发布](docs/RELEASE.md)。
+
 开发构建需要 Zig 0.14.1、Go、Python 3、Rust 1.87+（含 `aarch64-unknown-linux-musl` target）、C 编译器和 Node.js：
 
 ```sh
