@@ -66,8 +66,9 @@ class PortableUpgrade(unittest.TestCase):
                  hashlib.sha256(b'u60-imei-v1:123456789012345').hexdigest() + '\n')
         for f in ['check-device.sh', 'upgrade-installed.sh', 'restore-boot.sh']:
             code = (ROOT / 'scripts/portable' / f).read_text()
-            for prefix in ['/data/', '/etc/', '/sys/', '/dev/dri/', '/dev/net/', '/tmp/', '/proc/']:
-                code = re.sub(r'(?<![a-zA-Z0-9_.-])' + re.escape(prefix), str(self.target) + prefix, code)
+            prefixes = ['/data/', '/etc/', '/sys/', '/dev/dri/', '/dev/net/', '/tmp/', '/proc/']
+            code = re.sub(r'(?<![a-zA-Z0-9_.-])(?:' + '|'.join(map(re.escape, prefixes)) + ')',
+                          lambda match: str(self.target) + match[0], code)
             self.put(self.pkg / f, code)
         # A realistic installed tree: programs from an older release plus user state.
         payload = self.pkg / 'payload'
