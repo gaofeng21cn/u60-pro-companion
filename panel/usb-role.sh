@@ -67,7 +67,10 @@ lan_attach() {
  adapter_present || return 0
  supported || return 1
  # Do not steal an interface from another bridge or a routed network.
- master=$(readlink -f "$NET/$USB_IF/master" 2>/dev/null || true)
+ master=''
+ if [ -e "$NET/$USB_IF/master" ] || [ -L "$NET/$USB_IF/master" ]; then
+  master=$(readlink -f "$NET/$USB_IF/master" 2>/dev/null) || return 1
+ fi
  case "$master" in ''|*/br-lan) ;; *) return 1;; esac
  if ! bridge_member; then
   [ -z "$("$IP" -4 -o addr show dev "$USB_IF" scope global)" ] || return 1
