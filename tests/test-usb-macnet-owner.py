@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise native USB owner with an asynchronous vendor model, never a device."""
-import hashlib,json,os,pathlib,shutil,subprocess,tempfile,threading,time,unittest
+import hashlib,json,os,pathlib,re,shutil,subprocess,tempfile,threading,time,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 class NativeOwner(unittest.TestCase):
  def setUp(self):
@@ -20,7 +20,7 @@ class NativeOwner(unittest.TestCase):
   (self.g/'UDC').write_text('controller\n');self.configure('gsi.rndis')
   (self.private/'factory-links').write_text(self.links())
   src=(ROOT/'panel/usb-macnet-owner.sh').read_text()
-  for prefix in ['/data/','/tmp/','/sys/','/sbin/']:src=src.replace(prefix,str(self.base)+prefix)
+  src=re.sub(r'/data/|/tmp/|/sys/|/sbin/',lambda match:str(self.base)+match[0],src)
   src=src.replace('cut -d. -f1 /proc/uptime','date +%s')
   src=src.replace('/proc/mounts',str(self.mounts)).replace('/proc/$$/fd/9','/dev/fd/9')
   src=src.replace('a02435921bf6340773967eb7764b685fef78964af7ae4260383ab5514ad9093e',hashlib.sha256(self.original).hexdigest())

@@ -49,7 +49,7 @@ class Profiles(unittest.TestCase):
     self.assertTrue(run('coordinate')['ok']);self.assertEqual(state['selects'],[1],'healthy network must not be preempted')
     state['connected']=False;state['fail']={1}
     self.assertFalse(run('coordinate')['ok']);self.assertEqual(state['selects'][-1],1)
-    retry=next(d.glob('retry-*'));retry.write_text(str(int(time.monotonic())-120))
+    retry=next(d.glob('retry-*'));retry.write_text(str(max(1,int(time.monotonic())-120)))
     self.assertTrue(run('coordinate')['ok']);self.assertEqual(state['selects'][-1],0,'even an old failure stays excluded until every visible candidate has a turn')
     self.assertEqual(len(run('profiles')['networks']),2)
    finally:state['stop']=True;thread.join(2);sock.close()

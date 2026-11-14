@@ -1,0 +1,120 @@
+name: Publish Device Qualified U60 Release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Build U60 Release Candidate run
+        required: true
+        type: string
+      qualification_receipt:
+        description: Public-safe device qualification JSON for the same source and archive digest
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: u60-stable-publication
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.qualification.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify candidate run authority
+        id: authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: |
+          [[ "$CANDIDATE_RUN" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > "$RUNNER_TEMP/candidate-run.json"
+          python3 - <<'PY'
+          import json, os, re
+          run = json.load(open(os.environ['RUNNER_TEMP'] + '/candidate-run.json'))
+          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['path'] == '.github/workflows/release.yml' and run['event'] == 'push'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert re.fullmatch('[a-f0-9]{40}', run['head_sha'])
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('source=' + run['head_sha'] + '\n')
+          PY
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: u60-release-candidate-${{ steps.authority.outputs.source }}
+          path: ${{ runner.temp }}/candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Bind the device verdict to the frozen public candidate
+        id: qualification
+        env:
+          DEVICE_RECEIPT: ${{ inputs.qualification_receipt }}
+          EXPECTED_SOURCE: ${{ steps.authority.outputs.source }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'candidate'
+          candidate = json.loads((root / 'candidate.json').read_text())
+          assert candidate['source_commit'] == os.environ['EXPECTED_SOURCE']
+          assert subprocess.check_output(['git','rev-parse',candidate['source_commit']+'^{tree}'],text=True).strip() == candidate['source_tree']
+          assert subprocess.check_output(['git','rev-parse',candidate['tag']+'^{commit}'],text=True).strip() == candidate['source_commit']
+          subprocess.run(['git','merge-base','--is-ancestor',candidate['source_commit'],'origin/main'],check=True)
+          assert len(os.environ['DEVICE_RECEIPT']) < 10000
+          (root / 'qualification.json').write_text(os.environ['DEVICE_RECEIPT'])
+          subprocess.run(['python3','scripts/verify-release-qualification.py',str(root),str(root/'qualification.json')],check=True)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('tag=' + candidate['tag'] + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('Frozen source: `' + candidate['source_commit'] + '`.\n\nArchive SHA-256: `' + candidate['archive_sha256'] + '`.\n')
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u60-qualified-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+  publish:
+    needs: verify
+    environment: device-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: u60-qualified-publication-${{ github.run_id }}
+          path: publication
+      - name: Publish the qualified original archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          source=json.loads(Path('publication/candidate.json').read_text())
+          qualification=json.loads(Path('publication/qualification.json').read_text())
+          Path('release-notes.md').write_text('U60 Pro Companion '+source['tag']+'\n\nSource: '+source['source_commit']+'.\n\nHost regressions and ARM64 build passed. The release owner approved device qualification on '+qualification['firmware']+' for this exact archive. Other hardware validation keeps its documented scope.\n')
+          PY
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null 2>&1; then
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tar.gz' --dir existing
+            for file in publication/*.tar.gz; do cmp "$file" "existing/$(basename "$file")"; done
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "U60 Pro Companion $TAG" --notes-file release-notes.md publication/*.tar.gz publication/SHA256SUMS.txt publication/qualification.json
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,assets > release-readback.json
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          release=json.loads(Path('release-readback.json').read_text())
+          assert release['tagName']==os.environ['TAG']
+          for path in Path('publication').glob('*.tar.gz'):
+              asset,=[a for a in release['assets'] if a['name']==path.name]
+              assert asset['digest']=='sha256:'+hashlib.sha256(path.read_bytes()).hexdigest()
+          PY

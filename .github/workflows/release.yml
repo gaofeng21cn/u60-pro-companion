@@ -1,0 +1,70 @@
+name: Build U60 Release Candidate
+on:
+  push:
+    tags: ['v*-companion']
+permissions:
+  contents: read
+concurrency:
+  group: u60-release-candidate
+  cancel-in-progress: false
+jobs:
+  host:
+    uses: ./.github/workflows/ci.yml
+  candidate:
+    needs: host
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: web/controller/go.sum
+      - name: Bind the canonical product tag
+        run: |
+          git fetch origin main --quiet
+          git merge-base --is-ancestor HEAD origin/main
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          python3 - <<'PY'
+          import json, os
+          assert os.environ['GITHUB_REF_NAME'] == 'v' + json.load(open('product-version.json'))['version'] + '-companion'
+          PY
+      - name: Prepare pinned Zig and Rust cross toolchains
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz --output "$RUNNER_TEMP/zig.tar.xz"
+          printf '%s  %s\n' 24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c "$RUNNER_TEMP/zig.tar.xz" | sha256sum --check
+          tar -xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-0.14.1" >> "$GITHUB_PATH"
+          rustup toolchain install 1.92.0 --profile minimal --target aarch64-unknown-linux-musl
+          rustup default 1.92.0
+      - name: Build and package the public source
+        run: sh scripts/build.sh && python3 scripts/package.py
+      - name: Freeze source and archive identity
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          archive, = Path('dist').glob('*.tar.gz')
+          value = {'schema_version':'u60.release-candidate.v1', 'source_commit':os.environ['GITHUB_SHA'],
+            'source_tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+            'tag':os.environ['GITHUB_REF_NAME'], 'archive':archive.name,
+            'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
+            'host_regressions':'passed', 'device_qualification':'pending'}
+          Path('dist/candidate.json').write_text(json.dumps(value,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: u60-release-candidate-${{ github.sha }}
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+            dist/candidate.json
+          if-no-files-found: error
+          retention-days: 90

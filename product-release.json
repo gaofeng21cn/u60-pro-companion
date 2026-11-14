@@ -1,0 +1,37 @@
+{
+  "schema_version": "opl.product-release.v1",
+  "product_id": "u60-pro-companion",
+  "repository": "gaofeng21cn/u60-pro-companion",
+  "strategy": "daily_patch",
+  "trigger": "tag",
+  "tag_prefix": "v",
+  "tag_suffix": "-companion",
+  "publisher_workflow": "release.yml",
+  "publication_stage": "candidate_until_device_qualification",
+  "channel": {
+    "kind": "github_release"
+  },
+  "version_file": {
+    "path": "product-version.json",
+    "kind": "json"
+  },
+  "version_files": [
+    {
+      "path": "product-version.json",
+      "kind": "json"
+    }
+  ],
+  "release_paths": [
+    "panel",
+    "web",
+    "ui",
+    "esim-agent",
+    "scripts",
+    "sdk",
+    "packaging",
+    "product-version.json",
+    ".github/workflows/release.yml"
+  ],
+  "prepare": [],
+  "verify": []
+}

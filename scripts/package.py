@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Package only reviewed project files; no device backups or credentials."""
-import argparse,hashlib,importlib.util,pathlib,re,shutil,subprocess,tarfile
+import argparse,gzip,hashlib,importlib.util,json,pathlib,re,shutil,subprocess,tarfile
 R=pathlib.Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('prepare',R/'scripts/prepare.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--version',default='v0.2.2-companion')
+parser.add_argument('--version',default='v'+json.loads((R/'product-version.json').read_text())['version']+'-companion')
 args=parser.parse_args()
 VERSION=args.version
 if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9-]+',VERSION):raise SystemExit('Invalid package version')
@@ -55,7 +55,7 @@ web=data/'u60-web';shutil.copyfile(R/'web/factory/mount.sh',web/'mount.sh');(web
 for local,remote in [('u60-web-advanced.js','js/u60-web-advanced.js'),('u60-web-esim.js','js/u60-web-esim.js'),('u60-enhanced.js','js/auth/u60-enhanced.js'),('u60-web-model.js','js/u60-web-model.js'),('u60-enhanced.html','tmpl/auth/u60-enhanced.html')]:
  dest=web/'public'/remote;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(R/'web/factory'/local,dest)
 for n in ['jsQR.js','jsQR-LICENSE.txt']:shutil.copyfile(R/'web/vendor'/n,web/'public/js'/n)
-(web/'public/u60-extension-version.txt').write_text('20261012-esim-3\n')
+(web/'public/u60-extension-version.txt').write_text(VERSION+'\n')
 (p/'init').mkdir();(p/'boot').mkdir()
 for local,remote in [('usb-isolate','u60-usb-isolate'),('usb-role','u60-usb-role'),('wifi-relay','u60-wifi-relay'),('standby','u60-standby'),('web','u60-web'),('auth-bypass','u60-auth-bypass'),('usb-ncm-trial','u60-ncm-trial'),('usb-ecm-trial','u60-ecm-trial')]:
  shutil.copyfile(R/'panel'/(local+'-init.sh'),p/'init'/remote);(p/'init'/remote).chmod(0o700)
@@ -63,7 +63,7 @@ shutil.copyfile(R/'scripts/portable/portable-boot.sh',p/'boot/portable-boot.sh')
 for n in ['check-device.sh','install-new-device.sh','upgrade-installed.sh','restore-boot.sh','deploy-from-computer.py']:shutil.copyfile(R/'scripts/portable'/n,i/n)
 m.manifest(out);m.verify(out)
 archive=out.parent/(out.name+'.tar.gz')
-with tarfile.open(archive,'w:gz') as tar:
+with archive.open('wb') as raw,gzip.GzipFile(fileobj=raw,filename='',mode='wb',mtime=0) as gz,tarfile.open(fileobj=gz,mode='w') as tar:
  for f in sorted(out.rglob('*')):
   if not f.is_file():continue
   info=tar.gettarinfo(str(f),arcname=out.name+'/'+f.relative_to(out).as_posix());info.uid=info.gid=0;info.uname=info.gname='';info.mtime=0
