@@ -1,7 +1,7 @@
 #ifndef PANEL_SHELL_MODEL_H
 #define PANEL_SHELL_MODEL_H
 #define SHELL_MAX_FIELDS 24
-#define SHELL_VALUE_CAP 256
+#define SHELL_VALUE_CAP 768
 #define SHELL_SEARCH_CAP 64
 struct panel_shell {
  cJSON *snapshot; /* root owns; UI only reads. */

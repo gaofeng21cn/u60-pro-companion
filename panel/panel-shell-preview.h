@@ -441,6 +441,30 @@ static void shell_preview_relay_input(struct drm_buf*b,const char*dir){
  sh_action_result(&a,error);assert(a.shell.modal==3&&a.shell.status_until==0);shell_hit(&a,SH_CANCEL);assert(!a.shell.modal);cJSON_Delete(error);cJSON_Delete(a.shell.snapshot);sh_theme=0;
  puts("PASS: 44px password keys, direct modes, 63-character bound, concealed return, failed-connect draft retry and explicit error dismissal");
 }
+static cJSON*shell_preview_item(cJSON*s,const char*id){cJSON*i;cJSON_ArrayForEach(i,sh_get(s,"items"))if(!strcmp(sh_str(i,"id",""),id))return i;assert(0);return NULL;}
+static void shell_preview_esim(struct drm_buf*b,const char*dir){
+ const char*path=getenv("U60_ESIM_SCHEMA");if(!path)return;
+ FILE*f=fopen(path,"rb");assert(f);char text[65536];size_t n=fread(text,1,sizeof(text)-1,f);assert(feof(f));fclose(f);text[n]=0;
+ struct app a;shell_preview_fixture(&a);cJSON_Delete(a.shell.snapshot);a.shell.snapshot=cJSON_Parse(text);assert(a.shell.snapshot);panel_menu_layout(a.shell.snapshot);a.shell.tab=4;sh_theme=3;
+ sh_open_section(&a,"esim");shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,600);
+ cJSON*root=sh_section(&a,"esim"),*link=shell_preview_item(root,"esim.00000000000000000002");sh_open_item(&a,link);assert(!strcmp(a.shell.section,"esim.00000000000000000002"));
+ cJSON*profile=sh_section(&a,a.shell.section);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,601);
+ sh_open_item(&a,shell_preview_item(profile,"nickname"));assert(a.shell.modal==4);shell_hit(&a,SH_FIELD);assert(a.shell.editor);shell_hit(&a,SH_SEARCH_CLEAR);assert(!a.shell.values[0][0]);
+ for(int k=0;k<70;k++)shell_hit(&a,SH_KEY);assert(strlen(a.shell.values[0])==64);shell_hit(&a,SH_DONE);shell_hit(&a,SH_APPLY);assert(a.shell.modal==2&&strlen(sh_str(a.shell.pending_args,"nickname",""))==64);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,602);shell_hit(&a,SH_CANCEL);assert(!a.shell.busy);
+ sh_open_item(&a,shell_preview_item(profile,"delete"));shell_hit(&a,SH_APPLY);assert(a.shell.modal==4&&!a.shell.pending_args);shell_hit(&a,SH_FIELD);assert(a.shell.modal==5);shell_hit(&a,SH_CHOICE);assert(a.shell.modal==4);shell_hit(&a,SH_APPLY);assert(a.shell.modal==2&&!strcmp(sh_str(a.shell.pending_args,"confirm_name",""),"旧名称"));
+ assert(!strcmp(sh_str(a.shell.pending_args,"expected_eid",""),"00000000000000000000000000000000"));shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,603);shell_hit(&a,SH_CANCEL);shell_hit(&a,SH_BACK);assert(!strcmp(a.shell.section,"esim"));
+ sh_open_item(&a,shell_preview_item(root,"esim-download"));assert(!strcmp(a.shell.section,"esim-download"));shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,604);
+ sh_open_item(&a,shell_preview_item(sh_section(&a,"esim-download"),"activation"));assert(a.shell.modal==4);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,609);shell_hit(&a,SH_APPLY);assert(a.shell.modal==4&&!a.shell.pending_args);
+ snprintf(a.shell.values[0],SHELL_VALUE_CAP,"LPA:1$rsp.example.com$");memset(a.shell.values[0]+strlen(a.shell.values[0]),'A',500);a.shell.values[0][521]=0;strcpy(a.shell.values[1],"PRIVATE-CONFIRMATION");
+ a.shell.message[0]=0;shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,605);
+ uint16_t*form_before=malloc(320*480*2);assert(form_before);memcpy(form_before,b->map,320*480*2);strcpy(a.shell.values[3],"proxy");shell_render(b,&a);
+ assert(shell_preview_same_region(b,form_before,24,305,275,326));assert(!shell_preview_same_region(b,form_before,24,331,275,355));free(form_before);strcpy(a.shell.values[3],"auto");
+ shell_hit(&a,SH_FIELD);assert(a.shell.editor);shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,606);shell_hit(&a,SH_DONE);
+ shell_hit(&a,SH_APPLY);assert(a.shell.modal==2&&strlen(sh_str(a.shell.pending_args,"activation_code",""))>510);assert(!strstr(a.shell.message,"AAAA")&&!strstr(a.shell.message,"PRIVATE"));shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,607);shell_hit(&a,SH_CANCEL);assert(!a.shell.values[0][0]&&!a.shell.busy);
+ shell_hit(&a,SH_BACK);sh_open_item(&a,shell_preview_item(root,"esim-notifications"));shell_render(b,&a);shell_preview_hits(&a);shell_preview_write(b,dir,608);
+ sh_open_item(&a,shell_preview_item(sh_section(&a,a.shell.section),"send"));shell_hit(&a,SH_CHOICE);assert(a.shell.modal==2&&cJSON_GetArrayItem(sh_get(a.shell.pending_args,"seq"),0)->valueint==0);shell_hit(&a,SH_CANCEL);assert(!a.shell.busy);
+ sh_close(&a);cJSON_Delete(a.shell.snapshot);sh_theme=0;puts("PASS: native eSIM navigation/back, rename byte limit/clear, required target selection, deletion confirmation/EID, long concealed download input, cancel cleanup and sequence-zero notification");
+}
 static int shell_preview_main(const char*dir){
  struct app a;struct drm_buf b={0};int page;
  /* Malformed or truncated labels from the backend cannot escape the buffer. */
@@ -448,7 +472,7 @@ static int shell_preview_main(const char*dir){
  for(size_t t=0;t<sizeof(invalid)/sizeof(invalid[0]);t++){char*owned=strdup(invalid[t]);const char*q=owned;while(*q){const char*before=q;assert(utf8_next(&q)==0x3f);assert(q>before&&q<=owned+strlen(owned));}free(owned);}
  const char*q="中";assert(utf8_next(&q)==0x4e2d&&!*q);
  if(font_load()<0)return 1;b.pitch=640;b.size=320*480*2;b.map=calloc(320*480,2);
- shell_preview_live_regressions(&b);shell_preview_beacon(&b,dir,3,500);shell_preview_beacon(&b,dir,1,510);shell_preview_motion(&b,dir);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
+ shell_preview_esim(&b,dir);shell_preview_live_regressions(&b);shell_preview_beacon(&b,dir,3,500);shell_preview_beacon(&b,dir,1,510);shell_preview_motion(&b,dir);shell_preview_statusbar(&b,dir);shell_preview_battery_power(&b,dir);shell_preview_usb_badge(&b,dir);shell_preview_readonly(&b);shell_preview_root_navigation(&b);
  for(page=0;page<15;page++){
   shell_preview_fixture(&a);
   if(page<5)a.shell.tab=page;
