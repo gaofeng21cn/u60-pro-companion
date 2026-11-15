@@ -380,8 +380,8 @@ static const char *sh_net_notes[]={"名称、密码与无线设置","选网、AP
  * the end so existing ids never shift; the display order array below decides
  * what the user actually sees first. */
 static const char *sh_settings_sections[]={"system","battery","usage","signal","sms","band","sim","diagnostics","esim","clients","auth-bypass"};
-static const char *sh_settings_titles[]={"电源与屏幕","电池与省电","套餐流量账本","信号与邻区","短信收件箱","频段与小区","SIM 卡状态","网络诊断","eSIM 配置文件","已连接设备","终端上网放行"};
-static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试","读取 eUICC 与切换套餐","查看 Wi-Fi 与 USB 接入设备","查看并切换本机放行开关"};
+static const char *sh_settings_titles[]={"电源与屏幕","电池与省电","套餐流量账本","信号与邻区","短信收件箱","频段与小区","SIM 卡状态","网络诊断","eSIM 管理","已连接设备","终端上网放行"};
+static const char *sh_settings_notes[]={"主题、亮度与设备信息","充电、待机与供电策略","额度、月结日与用量","载波、信号与锁定工具","读取通知与验证码","频段限制与恢复自动","卡槽与安全状态","分流记录与网站测试","切换、改名、删除与下载","查看 Wi-Fi 与 USB 接入设备","查看并切换本机放行开关"};
 /* Display order is independent of the stable SH_SECTION action indices. */
 static int sh_menu_index(struct app*a,int index){
  static const int settings_order[]={0,1,2,8,3,4,6,5,7,9,10,11};
@@ -782,7 +782,7 @@ static void sh_editor(struct drm_buf*b,struct app*a){
  const char*visible=value;while(*visible&&text_width(visible,17)>276){visible++;while((*visible&0xC0)==0x80)visible++;}
  sh_text(b,18,101,*visible?visible:"|",17,SH_TEXT,280);
  char count[60];snprintf(count,sizeof(count),"%zu / %zu%s",strlen(input),capacity-1,password&&sh_num(f,"minLength",0)?" · 至少8位":"");sh_text(b,12,151,count,14,SH_MUTED,188);
- if(password)sh_button(b,a,204,140,108,44,s->reveal?"隐藏密码":"显示密码",SH_REVEAL,0);else if(search||!strcmp(kind,"number"))sh_button(b,a,204,140,108,44,"清空",SH_SEARCH_CLEAR,0);
+ if(password)sh_button(b,a,204,140,108,44,s->reveal?"隐藏内容":"显示内容",SH_REVEAL,0);else sh_button(b,a,204,140,108,44,"清空",SH_SEARCH_CLEAR,0);
  sh_button(b,a,8,190,96,44,"ABC",SH_ALPHA,s->key_page==0);
  sh_button(b,a,112,190,96,44,"123",SH_DIGITS,s->key_page==1);
  sh_button(b,a,216,190,96,44,"符号",SH_SYMBOLS,s->key_page==2);
@@ -792,9 +792,17 @@ static void sh_editor(struct drm_buf*b,struct app*a){
 }
 static void sh_form(struct drm_buf*b,struct app*a){
  struct panel_shell*s=&a->shell;int i;char val[SHELL_VALUE_CAP];cJSON*fs=sh_get(s->draft,"fields");
+ int esim_form=!strncmp(sh_str(s->draft,"action",""),"esim.",5),row_step=esim_form?72:63,row_height=esim_form?65:57;
  hit_reset(a);sh_background(b,0,0,320,480);sh_text(b,16,16,sh_str(s->draft,"label","修改设置"),20,SH_TEXT,285);sh_text(b,16,50,"轻点输入框编辑 · 保存后应用",14,SH_MUTED,285);
- sh_scroll_begin(a,&s->field_page,s->nfields*63+8,76,396);
- for(i=0;i<s->nfields;i++){int k=i;int y=80+i*63-s->field_page;if(y+57<=76||y>=396)continue;cJSON*f=cJSON_GetArrayItem(fs,k);snprintf(val,sizeof(val),"%s",s->values[k][0]?s->values[k]:"轻点输入");if(!strcmp(sh_str(f,"kind","text"),"choice")){cJSON*c;cJSON_ArrayForEach(c,sh_get(f,"choices")){char cv[SHELL_VALUE_CAP];sh_value(sh_get(c,"value"),cv,sizeof(cv));if(!strcmp(cv,s->values[k])){snprintf(val,sizeof(val),"%s",sh_str(c,"label",cv));break;}}}if(!strcmp(sh_str(f,"kind","text"),"password")&&s->values[k][0])snprintf(val,sizeof(val),"••••••••");sh_row(b,a,y,sh_str(f,"label","字段"),val,SH_FIELD+i,1,sh_current_group(a));}
+ sh_scroll_begin(a,&s->field_page,s->nfields*row_step+8,76,396);
+ for(i=0;i<s->nfields;i++){int k=i;int y=80+i*row_step-s->field_page;if(y+row_height<=76||y>=396)continue;cJSON*f=cJSON_GetArrayItem(fs,k);const char*empty=esim_form&&!cJSON_IsTrue(sh_get(f,"required"))?"选填，可留空":"轻点输入";snprintf(val,sizeof(val),"%s",s->values[k][0]?s->values[k]:empty);if(!strcmp(sh_str(f,"kind","text"),"choice")){cJSON*c;cJSON_ArrayForEach(c,sh_get(f,"choices")){char cv[SHELL_VALUE_CAP];sh_value(sh_get(c,"value"),cv,sizeof(cv));if(!strcmp(cv,s->values[k])){snprintf(val,sizeof(val),"%s",sh_str(c,"label",cv));break;}}}if(!strcmp(sh_str(f,"kind","text"),"password")&&s->values[k][0])snprintf(val,sizeof(val),"••••••••");
+  if(esim_form){
+   /* Labels and values occupy separate lines at every text length. */
+   sh_surface(b,12,y,308,y+row_height,11,sh_category_card(sh_current_group(a)));
+   sh_text(b,24,y+9,sh_str(f,"label","字段"),14,SH_MUTED,251);sh_text(b,24,y+35,val,17,SH_TEXT,251);
+   sh_text(b,285,y+24,"›",20,sh_category_ink(sh_current_group(a)),16);hit_add(a,12,y,308,y+row_height,SH_FIELD+i);
+  }else sh_row(b,a,y,sh_str(f,"label","字段"),val,SH_FIELD+i,1,sh_current_group(a));
+ }
  sh_scroll_end(b,a);
  if(s->message[0]){if(!strcmp(sh_str(s->draft,"action",""),"wifi.relay.connect"))sh_wrap(b,16,275,s->message,288,6,SH_WARN);else sh_text(b,16,400,s->message,14,SH_WARN,288);}else if(!strcmp(sh_str(s->draft,"action",""),"wifi.relay.connect"))sh_wrap(b,16,220,"也可在手机或电脑登录原厂管理页 → 增强功能 → 网络，输入上游密码。",288,6,SH_MUTED);
  sh_button(b,a,12,429,142,42,"取消",SH_CANCEL,0);sh_button(b,a,166,429,142,42,!strcmp(sh_str(s->draft,"action",""),"wifi.relay.connect")?"连接":"保存",SH_APPLY,1);
@@ -881,6 +889,9 @@ static void sh_save_form(struct app*a){
   if(!strcmp(kind,"number")&&s->values[i][0]){char*end;strtod(s->values[i],&end);if(*end){snprintf(s->message,sizeof(s->message),"请输入有效数字");cJSON_Delete(args);return;}}
   cJSON_DeleteItemFromObjectCaseSensitive(args,key);cJSON_AddStringToObject(args,key,s->values[i]);
  }
+ if(!strcmp(sh_str(s->draft,"action",""),"esim.nickname"))snprintf(s->message,sizeof(s->message),"新名称：%s",sh_str(args,"nickname","恢复原始名称"));
+ else if(!strcmp(sh_str(s->draft,"action",""),"esim.delete"))snprintf(s->message,sizeof(s->message),"删除：%s",sh_str(args,"confirm_name",""));
+ else if(!strcmp(sh_str(s->draft,"action",""),"esim.download"))snprintf(s->message,sizeof(s->message),"下载到当前卡片，完成后保持停用");
  sh_prepare(a,args);cJSON_Delete(args);
 }
 static int shell_hit(struct app*a,int id){
@@ -894,7 +905,7 @@ static int shell_hit(struct app*a,int id){
   int search=s->editor==2;char*v=search?s->search_edit:s->values[s->field];size_t n=strlen(v),capacity=sh_input_capacity(s);const char*keys=sh_keyboard(s);
   if(id==SH_DONE){if(search){snprintf(s->choice_search,sizeof(s->choice_search),"%s",s->search_edit);s->choice_page=0;}s->editor=0;s->reveal=0;}
   else if(id==SH_CANCEL){s->editor=0;s->reveal=0;if(search)s->choice_page=s->search_saved_page;}
-  else if(id==SH_SEARCH_CLEAR&&(search||!strcmp(sh_str(cJSON_GetArrayItem(sh_get(s->draft,"fields"),s->field),"kind",""),"number")))v[0]=0;
+  else if(id==SH_SEARCH_CLEAR)v[0]=0;
   else if(id==SH_REVEAL)s->reveal=!s->reveal;
   else if(id==SH_ALPHA)s->key_page=0;
   else if(id==SH_DIGITS)s->key_page=1;

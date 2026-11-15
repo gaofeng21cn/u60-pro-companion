@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Host-only black-box validation; no adb and no device writes."""
-import json, pathlib, subprocess, tempfile, copy
+import json, pathlib, subprocess, tempfile, copy, os
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 BASE={
  'tun_ready':False,
@@ -66,6 +66,41 @@ with tempfile.TemporaryDirectory(prefix='u60-control-test-') as tmp:
   r=call('esim.imei',patch={'zwrt_zte_mdm.api.get_imei':response})
   assert not r['ok'] and 'imei' not in r and r['fixture_write_count']==0
  r=call('state',patch={'zwrt_zte_mdm.api.get_imei':{'imei':'PRIVATE-VIEW-ONLY'}});assert 'PRIVATE-VIEW-ONLY' not in json.dumps(r)
+ # Native eSIM menus use card identities, including the active profile, and
+ # share the worker's commands rather than creating local profile state.
+ esim={'installed':True,'job':{'state':'done'},'view':{'card':'euicc','eid':'0'*32,'info':{'free_nvm':200000},'profiles':[
+  {'iccid':'0'*19+'1','name':'旅行中文套餐','nickname':'','enabled':True,'provider':'Example'},
+  {'iccid':'0'*19+'2','name':'Travel Profile','nickname':'旧名称','enabled':False,'provider':'Example'}],
+  'notifications':[{'seq':0,'operation':'install','iccid':'0'*19+'2','address':'rsp.example.com'}]}}
+ es=call('state',patch={'esim.status':esim})
+ sections={sec['id']:sec for sec in es['sections']}
+ for p in esim['view']['profiles']:
+  child=sections['esim.'+p['iccid']];assert child['parent']=='esim'
+  items={i['id']:i for i in child['items']}
+  assert items['switch']['action']=='esim.'+('disable' if p['enabled'] else 'enable')
+  assert items['delete']['enabled'] is (not p['enabled'])
+  for key in ['switch','nickname','delete']:
+   assert items[key]['confirm'] and items[key]['args']=={'confirmed':True,'expected_eid':'0'*32,'iccid':p['iccid']}
+  f=items['delete']['fields'][0];assert f['required'] and f['value']=='' and f['choices'][0]['value']==(p['nickname'] or p['name'])
+ download=sections['esim-download']['items']
+ assert {i['action'] for i in download if i['type']=='form'}=={'esim.download'}
+ assert download[0]['fields'][0]['maxLength']>510
+ for i in download:
+  if i['type']=='form':
+   assert i['args']=={'confirmed':True,'expected_eid':'0'*32}
+   assert all(f['value']=='' for f in i['fields'] if f['kind']=='password')
+ notes=sections['esim-notifications']['items'];assert notes[0]['choices'][0]['args']['seq']==[0]
+ assert es['fixture_write_count']==0
+ for state in ['running','interrupted']:
+  busy=copy.deepcopy(esim);busy['job']['state']=state
+  result=call('state',patch={'esim.status':busy})
+  for sec in result['sections']:
+   for i in sec['items']:
+    if i.get('action','').startswith('esim.') and i.get('action')!='esim.scan':assert i['enabled'] is False
+ for card in ['sim','absent','error']:
+  ordinary=call('state',patch={'esim.status':{'installed':True,'view':{'card':card}}})
+  assert all(i.get('action') in ('','esim.scan') for sec in ordinary['sections'] if sec['id'].startswith('esim') for i in sec['items'])
+ if os.environ.get('U60_ESIM_SCHEMA'):pathlib.Path(os.environ['U60_ESIM_SCHEMA']).write_text(json.dumps(es,ensure_ascii=False))
  s=call('state');assert s['ok'];assert s['data']['today_bytes']==120 and s['data']['month_bytes']==560
  wifi=next(sec['items'] for sec in s['sections'] if sec['id']=='wifi')
  assert [i['id'] for i in wifi[:4]]==['power','main_2g.enabled','main_5g.enabled','sleep']

@@ -8,7 +8,7 @@ define(['jquery','u60-web-model'],function($,model){
  function name(p){return p.nickname||p.name||'未命名配置';}
  function button(label,fn,disabled,cls){return n('button',cls||'u60-small-button',label).attr('type','button').prop('disabled',!!disabled).on('click',fn);}
  function row(label,value){return n('div','u60-setting').append(n('span','u60-setting-label',label),n('span','u60-setting-value',value));}
- function message(error){var s=String(error||'');if(/catBusy|\(5\)/i.test(s))return '卡片正在忙。请等待后重新读取；持续繁忙时手动重新插卡或重启，再读取确认，勿连续重试。';var messages={'Read the card first':'请先读取卡片','The card in the SIM tray is not an eUICC':'卡槽内为普通 SIM，不能下载 eSIM 配置','This profile is already enabled':'此配置已经启用','This profile is already disabled':'此配置已经停用','Disable this profile before deleting it':'请先停用此配置再删除','Invalid activation code':'激活码格式无效','This activation code needs a confirmation code':'此激活码需要填写确认码','Clash is not running':'代理未运行，请选择直连或先开启代理','The card refused the eUICC application (status 6A82)':'该卡不提供可管理的 eUICC 应用'};return messages[s]||s;}
+ function message(error){var s=String(error||'');if(/catBusy/i.test(s))return '卡片正在忙。请等待后重新读取；持续繁忙时在作业结束后检查卡片接触，再读取确认，勿连续重试。';var messages={'Read the card first':'请先读取卡片','The card in the SIM tray is not an eUICC':'卡槽内为普通 SIM，不能下载 eSIM 配置','This profile is already enabled':'此配置已经启用','This profile is already disabled':'此配置已经停用','Disable this profile before deleting it':'请先停用此配置再删除','Invalid activation code':'激活码格式无效','This activation code needs a confirmation code':'此激活码需要填写确认码','Clash is not running':'代理未运行，请选择直连或先开启代理','The card refused the eUICC application (status 6A82)':'该卡不提供可管理的 eUICC 应用','lpac did not finish in time':'卡片操作超时，请先重新读取核对结果，再决定下一步','The modem did not answer in time':'基带响应超时，请等待作业结束后重新读取卡片'};return messages[s]||s;}
  function step(s){return {queued:'等待设备设置锁',reading:'读取卡片',radio_offline:'暂停蜂窝网络',sim_power:'重新读取 SIM',sim_reading:'等待 SIM 就绪',firmware:'核对原厂固件状态',es10c_enable_profile:'启用配置',es10c_disable_profile:'停用配置',es10c_delete_profile:'删除配置',es10c_set_nickname:'修改名称',es9p_initiate_authentication:'连接运营商服务器',es9p_authenticate_client:'校验下载会话',es9p_get_bound_profile_package:'下载配置文件',es10b_load_bound_profile_package:'写入 eUICC',es9p_handle_notification:'发送运营商通知'}[s]||'正在处理';}
  function item(label,action,args,reason,fields){return {label:label,action:action,type:fields?'form':'action',enabled:true,confirm:true,args:Object.assign({confirmed:true},args),reason:reason,fields:fields};}
  function decodeImage(img,jsQR){
@@ -40,7 +40,7 @@ define(['jquery','u60-web-model'],function($,model){
   if(spec.key==='imei')return button('使用本机 IMEI',function(){var control=$(this);control.prop('disabled',true);api.call('esim.imei',{}).then(function(r){if(!present())return;if(r&&r.ok&&/^\d{15,16}$/.test(r.imei)){field.val(r.imei);api.status('已读取本机 IMEI');}else api.status(r&&r.message||'本机 IMEI 无法读取，可手动填写',true);},function(e){if(present())api.status(e.message||'本机 IMEI 无法读取',true);}).always(function(){control.prop('disabled',false);});});
  }
  function render(host,data,api){
-  host.empty().addClass('u60-advanced');var view=data.view||{},job=data.job||{},running=job.state==='running',ready=data.installed&&view.card==='euicc'&&!running,bind={expected_eid:view.eid};
+  host.empty().addClass('u60-advanced');var view=data.view||{},job=data.job||{},running=job.state==='running',ready=data.installed&&view.card==='euicc'&&!running&&job.state!=='interrupted'&&/^\d{32}$/.test(view.eid||''),bind={expected_eid:view.eid};
   if(selectionEid!==view.eid){picked=[];selectionEid=view.eid;}
   var box=card('eSIM 概况'),body=n('div','u60-card-body').appendTo(box);
   var scan=item('读取卡片','esim.scan',{},'只读操作');scan.confirm=false;delete scan.args.confirmed;
@@ -50,7 +50,9 @@ define(['jquery','u60-web-model'],function($,model){
   if(!data.installed)body.append(n('p','u60-help','eSIM 程序尚未安装，请使用含 eSIM 的安装包升级。'));
   if(view.eid||view.read_at){var details=n('details','u60-disclosure').attr('id','u60-esim-card').append(n('summary','','卡片详情'));
    if(view.eid)details.append(row('EID',view.eid));
-   var info=view.info||{};[['sgp22','SGP.22 版本'],['firmware','eUICC 固件'],['profile_version','配置文件版本'],['default_smdp','默认 SM-DP+'],['root_smds','根 SM-DS'],['sas','SAS 认证编号']].forEach(function(f){if(info[f[0]]!=null&&info[f[0]]!=='')details.append(row(f[1],String(info[f[0]])));});
+   var info=view.info||{};[['sgp22','SGP.22 版本'],['firmware','SE 固件版本'],['profile_version','配置文件版本'],['default_smdp','默认 SM-DP+'],['root_smds','根 SM-DS'],['sas','SAS 认证编号']].forEach(function(f){if(info[f[0]]!=null&&info[f[0]]!=='')details.append(row(f[1],String(info[f[0]])));});
+   if(info.firmware)details.append(n('p','u60-help','SE 版本是安全芯片提供的信息，不能据此判断 eSTKme 的 COS 固件版本或硬件代际。'));
+   details.append(n('p','u60-help','卡片 COS 与读卡器固件请使用厂商工具分别升级，并核对硬件型号。'),n('a','','eSTKme 官方 COS5 升级说明').attr({href:'https://blog.estk.me/zh/posts/upgrade-cos5-firmware/',target:'_blank',rel:'noopener noreferrer'}));
    if(info.free_nvm!=null)details.append(row('卡片剩余空间',model.bytes(Number(info.free_nvm),false)));
    if(info.installed_apps!=null)details.append(row('已安装应用数',String(info.installed_apps)));
    if(Array.isArray(info.ci_pkids)&&info.ci_pkids.length)details.append(row('CI 公钥标识',info.ci_pkids.join('、')));
@@ -58,11 +60,12 @@ define(['jquery','u60-web-model'],function($,model){
    if(view.read_at)details.append(row('最近读卡',new Date(view.read_at*1000).toLocaleString('zh-CN',{hour12:false})));body.append(details);
   }
   if(view.detail)body.append(n('p','u60-warning',message(view.detail)));
+  if(!running&&(view.card==='error'||view.card==='absent'))body.append(n('p','u60-help','等待作业结束后检查卡片是否插稳、触点是否接触良好，再读取卡片。读取失败本身不能确定为软件版本问题；先核对卡上结果，再决定是否重做下载或删除。'));
   if(running)body.append(n('p','u60-help',step(job.step)+'；请等待结果，勿重复提交。'));
   else if(job.error)body.append(n('p','u60-warning',message(job.error)));
   else if(job.state==='interrupted')body.append(n('p','u60-warning','上次操作中断，卡上结果未知；请重新读取后核对，勿直接重复下载。'));
   else if(job.state==='done')body.append(n('p','u60-help','最近操作已完成，以下为卡片回读。'));
-  if(job.result&&job.result.notifications&&job.result.notifications.error)body.append(n('p','u60-warning','配置操作已完成，运营商通知未发送：'+message(job.result.notifications.error)));
+  if(job.result&&job.result.notifications&&job.result.notifications.error)body.append(n('p','u60-warning','配置操作已完成，自动通知处理未完成：'+message(job.result.notifications.error)+'。请读取待处理通知后单独处理，无需重复配置操作。'));
   if(data.reboot_needed)body.append(n('p','u60-warning','卡片已切换，但原厂固件尚未识别新配置；请手动重新插卡或重启后再读取。'));
   else if(view.card==='euicc'&&view.firmware&&view.firmware.iccid){var active=(view.profiles||[]).find(function(p){return p.enabled;});if(active&&String(active.iccid).replace(/f+$/i,'')!==String(view.firmware.iccid).replace(/f+$/i,''))body.append(n('p','u60-warning','原厂 ICCID 与卡上启用配置不一致；蜂窝无法联网时，请手动重新插卡或重启后再读取。'));}
   host.append(box);
@@ -74,7 +77,7 @@ define(['jquery','u60-web-model'],function($,model){
     if(p.name)profileDetails.append(rowInfo('原始名称',p.name));if(p.class)profileDetails.append(rowInfo('配置类别',({operational:'运营配置',test:'测试配置',provisioning:'初始化配置'}[p.class]||p.class)));if(p.aid)profileDetails.append(rowInfo('应用 AID',p.aid));row.append(profileDetails);
     actions.append(button(p.enabled?'停用':'启用',function(){api.open(item((p.enabled?'停用':'启用')+' '+name(p),'esim.'+(p.enabled?'disable':'enable'),args,p.enabled?'停用后蜂窝服务将断开，直到启用另一配置。':'切换会短暂中断蜂窝网络。'));},!ready));
     actions.append(button('改名',function(){api.open(item('修改 '+name(p)+' 的名称','esim.nickname',args,'最多 64 字节。',[{key:'nickname',label:'新名称',kind:'text',value:p.nickname||'',required:false}]));},!ready));
-    actions.append(button('删除',function(){api.open(item('删除 '+name(p),'esim.delete',Object.assign({expected_name:name(p)},args),'此操作不可撤销；再次安装可能需要新的运营商激活码。请输入当前名称确认。',[{key:'confirm_name',label:'输入当前名称：'+name(p),kind:'text',required:true}]));},!ready||p.enabled,'u60-small-button u60-danger'));row.append(actions);body.append(row);
+    actions.append(button('删除',function(){api.open(item('删除 '+name(p),'esim.delete',Object.assign({expected_name:name(p)},args),'此操作不可撤销。删除后会自动尝试发送通知；迁移前请向运营商确认能否重新安装，可能需要新的激活码。请输入当前名称确认。',[{key:'confirm_name',label:'输入当前名称：'+name(p),kind:'text',required:true}]));},!ready||p.enabled,'u60-small-button u60-danger'));row.append(actions);body.append(row);
    });
    if(!(view.profiles||[]).length)body.append(n('p','u60-help','卡中没有配置文件，可以下载新配置。'));host.append(box);
    box=card('下载 eSIM 配置');body=n('div','u60-card-body').appendTo(box);
@@ -87,6 +90,8 @@ define(['jquery','u60-web-model'],function($,model){
    file.on('change',function(){var f=this.files&&this.files[0];if(!f)return;this.value='';readQrFile(f,function(code){if(document.documentElement.contains(file[0]))download(code,false);},function(error){if(document.documentElement.contains(file[0]))api.status(error,true);});});
    body.append(n('div','u60-inline-actions').append(button('输入激活码',function(){download('',false);},!ready,'u60-primary'),button('读取二维码图片',function(){file[0].click();},!ready),button('手填服务器信息',function(){download('',true);},!ready)),file,n('p','u60-scope','二维码仅在当前浏览器内识别，图片不会上传；也可在激活码输入框中粘贴截图。'));host.append(box);
    box=card('运营商通知');body=n('div','u60-card-body').appendTo(box);
+   body.append(n('p','u60-help','下载和删除会自动尝试发送新通知；“正在发送”表示进行中。通知处理结果与配置操作结果分别查看。'));
+   body.append(n('details','u60-disclosure').append(n('summary','','迁移与通知说明'),n('p','u60-help','迁移前先向运营商确认重新发卡或复用激活码的规则。删除旧配置、通知处理完成和新设备安装成功是不同步骤；仅移除通知不会告知运营商。')));
    var notifications=view.notifications||[];picked=picked.filter(function(seq){return notifications.some(function(note){return note.seq===seq;});});
    function notify(operation,seq){api.open(item(operation==='process'?'发送运营商通知':'移除运营商通知','esim.notifications',Object.assign({operation:operation,seq:seq,route:'auto'},bind),operation==='process'?'通知可能需要联网。':'移除后无法再向运营商报告此通知。'));}
    var batchLocked=!ready||!picked.length||picked.length>64,send=button('发送所选',function(){notify('process',picked.slice());},batchLocked),remove=button('移除所选',function(){notify('remove',picked.slice());},batchLocked,'u60-small-button u60-danger');
